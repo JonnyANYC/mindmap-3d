@@ -1,9 +1,10 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Box, Sphere, Plane, Grid, PerspectiveCamera, Text } from '@react-three/drei'
-import { useRef, useState } from 'react'
-import { Mesh } from 'three'
+import { OrbitControls, Box, Plane, Grid, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
+import { useRef, useState, useMemo } from 'react'
+import { Mesh, Vector3 } from 'three'
+import { useFrame, useThree } from '@react-three/fiber'
 
 interface NodeProps {
   position?: [number, number, number]
@@ -15,18 +16,13 @@ interface NodeProps {
 function Node({ position = [0, 0, 0], color = 'green', text = 'Sample text', onClick }: NodeProps) {
   const meshRef = useRef<Mesh>(null!)
   const [hovered, setHover] = useState(false)
-  const [active, setActive] = useState(false)
 
   return (
     <group position={position}>
       <Box
         ref={meshRef}
         args={[1, 1, 0.1]}
-        scale={active ? 1.2 : 1}
-        onClick={() => {
-          setActive(!active)
-          onClick?.()
-        }}
+        onClick={onClick}
         onPointerOver={() => setHover(true)}
         onPointerOut={() => setHover(false)}
       >
@@ -45,18 +41,83 @@ function Node({ position = [0, 0, 0], color = 'green', text = 'Sample text', onC
   )
 }
 
-function InteractiveSphere() {
-  const [hovered, setHover] = useState(false)
+interface ConnectionProps {
+  start: [number, number, number]
+  end: [number, number, number]
+  color?: string
+}
+
+function Connection({ start, end, color = 'green' }: ConnectionProps) {
+  const meshRef = useRef<Mesh>(null!)
+  const { camera } = useThree()
+  const [opacity, setOpacity] = useState(1)
+  
+  // Calculate connection geometry
+  const { position, rotation, length, connectionStart, connectionEnd } = useMemo(() => {
+    const startVec = new Vector3(...start)
+    const endVec = new Vector3(...end)
+    
+    // Determine which surfaces to connect (based on which are closest)
+    // For now, we'll use a simple heuristic based on relative positions
+    const direction = endVec.clone().sub(startVec).normalize()
+    
+    // Calculate the surface offset (0.05 for half the node depth + 0.5 gap)
+    const offset = 0.05 + 0.5
+    
+    // Adjust start and end points to create gaps
+    const connectionStart = startVec.clone().add(direction.clone().multiplyScalar(offset))
+    const connectionEnd = endVec.clone().sub(direction.clone().multiplyScalar(offset))
+    
+    // Calculate cylinder position (midpoint) and length
+    const midpoint = connectionStart.clone().add(connectionEnd).multiplyScalar(0.5)
+    const cylinderLength = connectionStart.distanceTo(connectionEnd)
+    
+    // Calculate rotation to align cylinder with connection direction
+    const up = new Vector3(0, 1, 0)
+    const axis = new Vector3().crossVectors(up, direction).normalize()
+    const angle = Math.acos(up.dot(direction))
+    
+    return {
+      position: [midpoint.x, midpoint.y, midpoint.z] as [number, number, number],
+      rotation: [axis.x * angle, axis.y * angle, axis.z * angle] as [number, number, number],
+      length: cylinderLength,
+      connectionStart,
+      connectionEnd
+    }
+  }, [start, end])
+  
+  // Update opacity based on occlusion
+  useFrame(() => {
+    if (!meshRef.current) return
+    
+    // Check if the connection is behind the camera or occluded
+    const meshPosition = new Vector3(...position)
+    const cameraDirection = new Vector3()
+    camera.getWorldDirection(cameraDirection)
+    
+    const toMesh = meshPosition.clone().sub(camera.position).normalize()
+    const dotProduct = cameraDirection.dot(toMesh)
+    
+    // If behind camera or at steep angle, reduce opacity
+    const newOpacity = dotProduct < 0.3 ? 0.25 : 1
+    if (Math.abs(newOpacity - opacity) > 0.01) {
+      setOpacity(newOpacity)
+    }
+  })
   
   return (
-    <Sphere
-      args={[0.7, 32, 32]}
-      position={[1.5, 0, 0]}
-      onPointerOver={() => setHover(true)}
-      onPointerOut={() => setHover(false)}
+    <DreiCylinder
+      ref={meshRef}
+      args={[0.01, 0.01, length, 8]}
+      position={position}
+      rotation={rotation}
     >
-      <meshStandardMaterial color={hovered ? 'lightblue' : 'blue'} />
-    </Sphere>
+      <meshStandardMaterial 
+        color={color} 
+        transparent 
+        opacity={opacity}
+      />
+    </DreiCylinder>
   )
 }
 
@@ -71,7 +132,8 @@ export default function Scene3D() {
         <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
         
         <Node position={[-1.5, 0, 0]} color="green" />
-        <InteractiveSphere />
+        <Node position={[-0.5, 1, 1]} color="green" text="Node 2" />
+        <Connection start={[-1.5, 0, 0]} end={[-0.5, 1, 1]} color="green" />
         
         <Plane
           args={[10, 10]}
@@ -91,8 +153,7 @@ export default function Scene3D() {
           <li>🖱️ Left click + drag: Rotate camera</li>
           <li>🖱️ Right click + drag: Pan camera</li>
           <li>🖱️ Scroll: Zoom in/out</li>
-          <li>📦 Click the green node to scale it</li>
-          <li>🔵 Hover over objects to highlight</li>
+          <li>📦 Hover over the node to highlight</li>
         </ul>
       </div>
     </div>
