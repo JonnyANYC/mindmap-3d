@@ -5,64 +5,106 @@ import { OrbitControls, Box, Plane, Grid, PerspectiveCamera, Text, Cylinder as D
 import { useRef, useState, useMemo } from 'react'
 import { Mesh, Vector3 } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
+import { 
+  useEntries, 
+  useConnections, 
+  useSelectedEntryId,
+  useHoveredEntryId,
+  useEntryActions 
+} from '@/hooks/useMindMapStore'
+import { DEFAULT_ENTRY_COLOR, SELECTED_ENTRY_COLOR, HOVERED_ENTRY_COLOR } from '@/types/mindmap'
+import type { Entry as EntryType, Connection as ConnectionType } from '@/types/mindmap'
 
-interface NodeProps {
-  position?: [number, number, number]
-  color?: string
-  text?: string
-  onClick?: () => void
+interface EntryProps {
+  entry: EntryType
 }
 
-function Node({ position = [0, 0, 0], color = 'green', text = 'Sample text', onClick }: NodeProps) {
+function Entry({ entry }: EntryProps) {
   const meshRef = useRef<Mesh>(null!)
-  const [hovered, setHover] = useState(false)
+  const selectedEntryId = useSelectedEntryId()
+  const hoveredEntryId = useHoveredEntryId()
+  const { selectEntry, hoverEntry } = useEntryActions()
+  
+  const isSelected = selectedEntryId === entry.id
+  const isHovered = hoveredEntryId === entry.id
+  
+  const color = isSelected 
+    ? SELECTED_ENTRY_COLOR 
+    : isHovered 
+      ? HOVERED_ENTRY_COLOR 
+      : entry.color || DEFAULT_ENTRY_COLOR
 
   return (
-    <group position={position}>
+    <group position={entry.position}>
       <Box
         ref={meshRef}
-        args={[1, 1, 0.1]}
-        onClick={onClick}
-        onPointerOver={() => setHover(true)}
-        onPointerOut={() => setHover(false)}
+        args={[1, 1, 0.05]}
+        onClick={(e) => {
+          e.stopPropagation()
+          selectEntry(entry.id)
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation()
+          hoverEntry(entry.id)
+        }}
+        onPointerOut={(e) => {
+          e.stopPropagation()
+          hoverEntry(null)
+        }}
       >
-        <meshStandardMaterial color={hovered ? 'lightgreen' : color} />
+        <meshStandardMaterial color={color} />
       </Box>
       <Text
-        position={[0, 0, 0.051]}
+        position={[0, 0, 0.026]}
         fontSize={0.15}
         color="white"
         anchorX="center"
         anchorY="middle"
+        maxWidth={0.9}
       >
-        {text}
+        {entry.summary}
       </Text>
+      {isSelected && (
+        <Text
+          position={[0, -0.35, 0.026]}
+          fontSize={0.08}
+          color="white"
+          anchorX="center"
+          anchorY="middle"
+          onClick={(e) => {
+            e.stopPropagation()
+            console.log('Edit button clicked for entry:', entry.id)
+            // TODO: Open editor dialog
+          }}
+        >
+          [Edit]
+        </Text>
+      )}
     </group>
   )
 }
 
 interface ConnectionProps {
-  start: [number, number, number]
-  end: [number, number, number]
-  color?: string
+  connection: ConnectionType
+  sourceEntry: EntryType
+  targetEntry: EntryType
 }
 
-function Connection({ start, end, color = 'green' }: ConnectionProps) {
+function Connection({ connection, sourceEntry, targetEntry }: ConnectionProps) {
   const meshRef = useRef<Mesh>(null!)
   const { camera } = useThree()
   const [opacity, setOpacity] = useState(1)
   
   // Calculate connection geometry
-  const { position, rotation, length, connectionStart, connectionEnd } = useMemo(() => {
-    const startVec = new Vector3(...start)
-    const endVec = new Vector3(...end)
+  const { position, rotation, length } = useMemo(() => {
+    const startVec = new Vector3(...sourceEntry.position)
+    const endVec = new Vector3(...targetEntry.position)
     
-    // Determine which surfaces to connect (based on which are closest)
-    // For now, we'll use a simple heuristic based on relative positions
+    // Direction from start to end
     const direction = endVec.clone().sub(startVec).normalize()
     
-    // Calculate the surface offset (0.05 for half the node depth + 0.5 gap)
-    const offset = 0.05 + 0.5
+    // Calculate the surface offset (0.025 for half the entry depth + 0.5 gap)
+    const offset = 0.025 + 0.5
     
     // Adjust start and end points to create gaps
     const connectionStart = startVec.clone().add(direction.clone().multiplyScalar(offset))
@@ -80,11 +122,9 @@ function Connection({ start, end, color = 'green' }: ConnectionProps) {
     return {
       position: [midpoint.x, midpoint.y, midpoint.z] as [number, number, number],
       rotation: [axis.x * angle, axis.y * angle, axis.z * angle] as [number, number, number],
-      length: cylinderLength,
-      connectionStart,
-      connectionEnd
+      length: cylinderLength
     }
-  }, [start, end])
+  }, [sourceEntry.position, targetEntry.position])
   
   // Update opacity based on occlusion
   useFrame(() => {
@@ -113,7 +153,7 @@ function Connection({ start, end, color = 'green' }: ConnectionProps) {
       rotation={rotation}
     >
       <meshStandardMaterial 
-        color={color} 
+        color={DEFAULT_ENTRY_COLOR}
         transparent 
         opacity={opacity}
       />
@@ -122,18 +162,43 @@ function Connection({ start, end, color = 'green' }: ConnectionProps) {
 }
 
 export default function Scene3D() {
+  const entries = useEntries()
+  const connections = useConnections()
+  const { selectEntry } = useEntryActions()
+  
   return (
     <div className="w-full bg-gray-100" style={{ height: '550px' }}>
-      <Canvas shadows>
+      <Canvas 
+        shadows
+        onClick={() => selectEntry(null)}
+      >
         <PerspectiveCamera makeDefault position={[5, 5, 5]} />
         <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
         
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
         
-        <Node position={[-1.5, 0, 0]} color="green" />
-        <Node position={[-0.5, 1, 1]} color="green" text="Node 2" />
-        <Connection start={[-1.5, 0, 0]} end={[-0.5, 1, 1]} color="green" />
+        {/* Render all entries */}
+        {entries.map(entry => (
+          <Entry key={entry.id} entry={entry} />
+        ))}
+        
+        {/* Render all connections */}
+        {connections.map(connection => {
+          const sourceEntry = entries.find(e => e.id === connection.sourceId)
+          const targetEntry = entries.find(e => e.id === connection.targetId)
+          
+          if (!sourceEntry || !targetEntry) return null
+          
+          return (
+            <Connection
+              key={connection.id}
+              connection={connection}
+              sourceEntry={sourceEntry}
+              targetEntry={targetEntry}
+            />
+          )
+        })}
         
         <Plane
           args={[10, 10]}
@@ -148,12 +213,13 @@ export default function Scene3D() {
       </Canvas>
       
       <div className="absolute top-4 left-4 bg-white p-4 rounded-lg shadow-lg">
-        <h2 className="text-xl font-bold mb-2">3D Scene Controls</h2>
+        <h2 className="text-xl font-bold mb-2">3D Mind Map Controls</h2>
         <ul className="text-sm space-y-1">
           <li>🖱️ Left click + drag: Rotate camera</li>
           <li>🖱️ Right click + drag: Pan camera</li>
           <li>🖱️ Scroll: Zoom in/out</li>
-          <li>📦 Hover over the node to highlight</li>
+          <li>📦 Click entry: Select</li>
+          <li>✏️ Click [Edit] on selected: Open editor</li>
         </ul>
       </div>
     </div>
