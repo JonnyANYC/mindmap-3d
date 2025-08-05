@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { MindMap, Entry, Connection } from '@/types/mindmap'
+import type { MindMap } from '@/types/mindmap'
 
 // Supabase client setup
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -220,7 +220,7 @@ export const mindMapService = {
   // Setup real-time subscription
   subscribeToChanges(
     mindMapId: string, 
-    onUpdate: (payload: any) => void
+    onUpdate: (payload: unknown) => void
   ) {
     if (!supabase) {
       console.log('Supabase not configured - real-time sync disabled')

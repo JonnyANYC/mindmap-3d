@@ -1,5 +1,5 @@
 import { useMindMapStore } from '@/lib/store'
-import type { Entry, Connection } from '@/types/mindmap'
+import type { Entry } from '@/types/mindmap'
 
 // Selectors for accessing state
 export const useEntries = () => useMindMapStore(state => state.entries)

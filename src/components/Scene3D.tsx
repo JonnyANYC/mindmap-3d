@@ -51,6 +51,7 @@ function Entry({ entry }: EntryProps) {
           e.stopPropagation()
           hoverEntry(null)
         }}
+        userData={{ isEntry: true }}
       >
         <meshStandardMaterial color={color} />
       </Box>
@@ -118,25 +119,59 @@ interface ConnectionProps {
   targetEntry: EntryType
 }
 
-function Connection({ connection, sourceEntry, targetEntry }: ConnectionProps) {
+function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
   const meshRef = useRef<Mesh>(null!)
-  const { camera } = useThree()
+  const { camera, raycaster, scene } = useThree()
   const [opacity, setOpacity] = useState(1)
   
-  // Calculate connection geometry
+  // Calculate connection geometry with smart surface selection
   const { position, rotation, length } = useMemo(() => {
     const startVec = new Vector3(...sourceEntry.position)
     const endVec = new Vector3(...targetEntry.position)
     
-    // Direction from start to end
-    const direction = endVec.clone().sub(startVec).normalize()
+    // Calculate entry dimensions
+    const entryWidth = 1
+    const entryHeight = 1
+    const entryDepth = 0.05
     
-    // Calculate the surface offset (0.025 for half the entry depth + 0.5 gap)
-    const offset = 0.025 + 0.5
+    // Calculate vector from source to target
+    const connectionVector = endVec.clone().sub(startVec)
+    const direction = connectionVector.normalize()
     
-    // Adjust start and end points to create gaps
-    const connectionStart = startVec.clone().add(direction.clone().multiplyScalar(offset))
-    const connectionEnd = endVec.clone().sub(direction.clone().multiplyScalar(offset))
+    // Determine which surfaces to connect based on the dominant axis
+    const sourceOffset = new Vector3()
+    const targetOffset = new Vector3()
+    
+    // Check the dominant direction component
+    const absX = Math.abs(direction.x)
+    const absY = Math.abs(direction.y)
+    const absZ = Math.abs(direction.z)
+    
+    if (absZ >= absX && absZ >= absY) {
+      // Z-axis is dominant - connect z-surfaces
+      sourceOffset.z = direction.z > 0 ? entryDepth / 2 : -entryDepth / 2
+      targetOffset.z = direction.z > 0 ? -entryDepth / 2 : entryDepth / 2
+    } else if (absX >= absY) {
+      // X-axis is dominant - connect x-surfaces
+      sourceOffset.x = direction.x > 0 ? entryWidth / 2 : -entryWidth / 2
+      targetOffset.x = direction.x > 0 ? -entryWidth / 2 : entryWidth / 2
+    } else {
+      // Y-axis is dominant - connect y-surfaces
+      sourceOffset.y = direction.y > 0 ? entryHeight / 2 : -entryHeight / 2
+      targetOffset.y = direction.y > 0 ? -entryHeight / 2 : entryHeight / 2
+    }
+    
+    // Calculate the actual connection points on the entry surfaces
+    const sourcePoint = startVec.clone().add(sourceOffset)
+    const targetPoint = endVec.clone().add(targetOffset)
+    
+    // Recalculate direction based on actual connection points
+    const actualDirection = targetPoint.clone().sub(sourcePoint).normalize()
+    
+    // Apply 0.5 unit gap from entry surfaces
+    const gap = 0.5
+    const connectionStart = sourcePoint.clone().add(actualDirection.clone().multiplyScalar(gap))
+    const connectionEnd = targetPoint.clone().sub(actualDirection.clone().multiplyScalar(gap))
     
     // Calculate cylinder position (midpoint) and length
     const midpoint = connectionStart.clone().add(connectionEnd).multiplyScalar(0.5)
@@ -144,8 +179,8 @@ function Connection({ connection, sourceEntry, targetEntry }: ConnectionProps) {
     
     // Calculate rotation to align cylinder with connection direction
     const up = new Vector3(0, 1, 0)
-    const axis = new Vector3().crossVectors(up, direction).normalize()
-    const angle = Math.acos(up.dot(direction))
+    const axis = new Vector3().crossVectors(up, actualDirection).normalize()
+    const angle = Math.acos(Math.max(-1, Math.min(1, up.dot(actualDirection))))
     
     return {
       position: [midpoint.x, midpoint.y, midpoint.z] as [number, number, number],
@@ -154,22 +189,61 @@ function Connection({ connection, sourceEntry, targetEntry }: ConnectionProps) {
     }
   }, [sourceEntry.position, targetEntry.position])
   
-  // Update opacity based on occlusion
+  // Update opacity based on occlusion with improved detection
   useFrame(() => {
     if (!meshRef.current) return
     
-    // Check if the connection is behind the camera or occluded
-    const meshPosition = new Vector3(...position)
-    const cameraDirection = new Vector3()
-    camera.getWorldDirection(cameraDirection)
+    const cameraPos = camera.position.clone()
     
-    const toMesh = meshPosition.clone().sub(camera.position).normalize()
-    const dotProduct = cameraDirection.dot(toMesh)
+    // Cast rays from camera to multiple points along the connection
+    const checkPoints = 5 // Number of points to check along the connection
+    let occludedCount = 0
     
-    // If behind camera or at steep angle, reduce opacity
-    const newOpacity = dotProduct < 0.3 ? 0.25 : 1
-    if (Math.abs(newOpacity - opacity) > 0.01) {
-      setOpacity(newOpacity)
+    for (let i = 0; i <= checkPoints; i++) {
+      const t = i / checkPoints
+      const checkPoint = new Vector3(
+        sourceEntry.position[0] * (1 - t) + targetEntry.position[0] * t,
+        sourceEntry.position[1] * (1 - t) + targetEntry.position[1] * t,
+        sourceEntry.position[2] * (1 - t) + targetEntry.position[2] * t
+      )
+      
+      // Set up raycaster from camera to check point
+      const direction = checkPoint.clone().sub(cameraPos).normalize()
+      raycaster.set(cameraPos, direction)
+      
+      // Check for intersections with entry boxes
+      const intersects = raycaster.intersectObjects(scene.children, true)
+      
+      // Check if any entry is blocking the view
+      for (const intersect of intersects) {
+        const distance = cameraPos.distanceTo(checkPoint)
+        if (intersect.distance < distance && intersect.object.type === 'Mesh') {
+          // Check if the intersected object is an entry (Box)
+          const parent = intersect.object.parent
+          if (parent && parent.userData?.isEntry) {
+            occludedCount++
+            break
+          }
+        }
+      }
+    }
+    
+    // Calculate opacity based on occlusion percentage
+    const occlusionRatio = occludedCount / (checkPoints + 1)
+    let targetOpacity = 1
+    
+    if (occlusionRatio > 0.6) {
+      targetOpacity = 0.15 // Heavily occluded
+    } else if (occlusionRatio > 0.3) {
+      targetOpacity = 0.4 // Partially occluded
+    } else if (occlusionRatio > 0) {
+      targetOpacity = 0.7 // Slightly occluded
+    }
+    
+    // Smooth opacity transitions
+    const opacityDiff = targetOpacity - opacity
+    if (Math.abs(opacityDiff) > 0.01) {
+      setOpacity(opacity + opacityDiff * 0.1)
     }
   })
   
