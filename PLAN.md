@@ -13,21 +13,15 @@
 
 ## Phase 2: Enhanced 3D Visualization
 ### 2.1 Remove Grid and Update Scene
-- Remove grid from 3D scene (already has Grid component to remove)
-- Update background and lighting for better visualization
-- Remove or update ground plane as needed
+- [x] Remove grid from 3D scene (already has Grid component to remove) ✓
+- [x] Update background and lighting for better visualization ✓
+- [x] Remove or update ground plane as needed ✓
 
 ### 2.2 Improve Connection Rendering
-- Update connection cylinder implementation to properly calculate z-axis surfaces
-- Implement smart connection point selection (closest surfaces)
-- Ensure 0.5 unit gap from entry surfaces
-- Fine-tune opacity transitions for occluded connections
-
-### 2.3 Camera Position Indicators
-- Create dynamic camera position tracking
-- Implement arrow indicators pointing to z-axis and y-axis planes
-- Add distance calculations to origin planes
-- Update help overlay with dynamic position information
+- [x] Update connection cylinder implementation to properly calculate z-axis surfaces ✓
+- [x] Implement smart connection point selection (closest surfaces) ✓
+- [x] Ensure 0.5 unit gap from entry surfaces ✓
+- [x] Fine-tune opacity transitions for occluded connections ✓
 
 ## Phase 3: User Interaction Features
 ### 3.1 Add Entry Button & Creation Logic
@@ -115,6 +109,13 @@
 - Test touch device support
 - Performance testing with many entries
 
+## Phase 8: Camera Position Indicators
+### 8.1 Camera Position Indicators
+- Create dynamic camera position tracking
+- Implement arrow indicators pointing to z-axis and y-axis planes
+- Add distance calculations to origin planes
+- Update help overlay with dynamic position information
+
 ## Implementation Order
 1. **Week 1**: Phase 1 (Basic Setup) + Phase 2 (Visual updates)
 2. **Week 2**: Phase 3.1-3.2 (Add Entry + Connections)
@@ -122,6 +123,7 @@
 4. **Week 4**: Phase 4 (WYSIWYG Editor)
 5. **Week 5**: Phase 5 (State & Persistence)
 6. **Week 6**: Phase 6 (UI Polish) + Phase 7 (Performance & Testing)
+7. **Week 7**: Phase 8 (Camera Position Indicators)
 
 ## Key Technical Decisions
 - Use Tiptap for WYSIWYG editor (better React integration)
