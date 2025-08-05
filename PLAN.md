@@ -25,11 +25,14 @@
 
 ## Phase 3: User Interaction Features
 ### 3.1 Add Entry Button & Creation Logic
-- Create "Add Entry" button in UI
-- Implement smart positioning logic:
-  - If selected entry exists and camera > 3 units away: place halfway
-  - Otherwise: place 3 units in front of camera
-- Auto-select newly created entries
+- [x] Create "Add Entry" button in UI ✓
+- [x] Implement smart positioning logic: ✓
+  - If selected entry exists and camera > 3 units away: place halfway ✓
+  - Otherwise: place 3 units in front of camera ✓
+- [x] Auto-select newly created entries ✓
+- [x] Fix Entry selection click handling ✓
+  - Fixed Text elements blocking clicks on Entry boxes
+  - Fixed Canvas onClick immediately deselecting entries
 
 ### 3.2 Connection Management
 - Implement Ctrl+Click connection toggle functionality

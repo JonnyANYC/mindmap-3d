@@ -1,9 +1,9 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Box, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
+import { OrbitControls, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
 import { useRef, useState, useMemo } from 'react'
-import { Mesh, Vector3 } from 'three'
+import { Mesh, Vector3, Camera } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { 
   useEntries, 
@@ -14,6 +14,8 @@ import {
 } from '@/hooks/useMindMapStore'
 import { DEFAULT_ENTRY_COLOR, SELECTED_ENTRY_COLOR, HOVERED_ENTRY_COLOR } from '@/types/mindmap'
 import type { Entry as EntryType, Connection as ConnectionType } from '@/types/mindmap'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
 
 interface EntryProps {
   entry: EntryType
@@ -36,9 +38,8 @@ function Entry({ entry }: EntryProps) {
 
   return (
     <group position={entry.position}>
-      <Box
+      <mesh
         ref={meshRef}
-        args={[1, 1, 0.05]}
         onClick={(e) => {
           e.stopPropagation()
           selectEntry(entry.id)
@@ -51,10 +52,10 @@ function Entry({ entry }: EntryProps) {
           e.stopPropagation()
           hoverEntry(null)
         }}
-        userData={{ isEntry: true }}
       >
+        <boxGeometry args={[1, 1, 0.05]} />
         <meshStandardMaterial color={color} />
-      </Box>
+      </mesh>
       <Text
         position={[0, 0, 0.026]}
         fontSize={0.15}
@@ -62,6 +63,8 @@ function Entry({ entry }: EntryProps) {
         anchorX="center"
         anchorY="middle"
         maxWidth={0.9}
+        // @ts-expect-error - pointerEvents prop exists but not in types
+        pointerEvents="none"
       >
         {entry.summary}
       </Text>
@@ -73,6 +76,8 @@ function Entry({ entry }: EntryProps) {
         anchorY="middle"
         maxWidth={0.9}
         rotation={[0, Math.PI, 0]}
+        // @ts-expect-error - pointerEvents prop exists but not in types
+        pointerEvents="none"
       >
         {entry.summary}
       </Text>
@@ -263,15 +268,73 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
   )
 }
 
+function CameraController({ cameraRef }: { cameraRef: { current: Camera | null } }) {
+  const { camera } = useThree()
+  
+  useFrame(() => {
+    cameraRef.current = camera
+  })
+  
+  return null
+}
+
 export default function Scene3D() {
   const entries = useEntries()
   const connections = useConnections()
-  const { selectEntry } = useEntryActions()
+  const { selectEntry, addEntry } = useEntryActions()
+  const selectedEntryId = useSelectedEntryId()
+  const cameraRef = useRef<Camera | null>(null)
+  
+  const handleAddEntry = () => {
+    if (!cameraRef.current) {
+      // Fallback to random position if camera not ready
+      addEntry()
+      return
+    }
+    
+    const camera = cameraRef.current
+    const selectedEntry = entries.find(e => e.id === selectedEntryId)
+    
+    let newPosition: [number, number, number]
+    
+    if (selectedEntry) {
+      // Calculate distance between camera and selected entry
+      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
+      const entryPos = new Vector3(...selectedEntry.position)
+      const distance = cameraPos.distanceTo(entryPos)
+      
+      if (distance > 3) {
+        // Place halfway between camera and selected entry
+        const midpoint = new Vector3()
+          .addVectors(cameraPos, entryPos)
+          .multiplyScalar(0.5)
+        newPosition = [midpoint.x, midpoint.y, midpoint.z]
+      } else {
+        // Place 3 units in front of camera
+        const direction = new Vector3(0, 0, -1)
+        direction.applyQuaternion(camera.quaternion)
+        const position = cameraPos.clone().add(direction.multiplyScalar(3))
+        newPosition = [position.x, position.y, position.z]
+      }
+    } else {
+      // No selection - place 3 units in front of camera
+      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
+      const direction = new Vector3(0, 0, -1)
+      direction.applyQuaternion(camera.quaternion)
+      const position = cameraPos.clone().add(direction.multiplyScalar(3))
+      newPosition = [position.x, position.y, position.z]
+    }
+    
+    addEntry(newPosition)
+  }
   
   return (
     <div className="w-full bg-gray-900" style={{ height: '550px' }}>
       <Canvas 
-        onClick={() => selectEntry(null)}
+        onPointerMissed={() => {
+          // Only deselect when clicking on empty space
+          selectEntry(null)
+        }}
         gl={{ antialias: true }}
         camera={{ fov: 75 }}
       >
@@ -280,6 +343,7 @@ export default function Scene3D() {
         
         <PerspectiveCamera makeDefault position={[5, 5, 5]} />
         <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
+        <CameraController cameraRef={cameraRef} />
         
         <ambientLight intensity={0.3} />
         <directionalLight position={[10, 10, 5]} intensity={0.8} />
@@ -309,14 +373,28 @@ export default function Scene3D() {
         })}
       </Canvas>
       
-      <div className="absolute top-4 left-4 bg-white p-4 rounded-lg shadow-lg">
-        <h2 className="text-xl font-bold mb-2">3D Mind Map Controls</h2>
+      {/* Add Entry Button */}
+      <div className="absolute top-4 right-4">
+        <Button 
+          onClick={handleAddEntry}
+          size="lg"
+          className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
+        >
+          <Plus className="mr-2 h-5 w-5" />
+          Add Entry
+        </Button>
+      </div>
+      
+      {/* Help Overlay */}
+      <div className="absolute bottom-4 left-4 bg-gray-800/90 text-white p-4 rounded-lg shadow-lg">
+        <h2 className="text-lg font-bold mb-2">3D Mind Map controls</h2>
         <ul className="text-sm space-y-1">
           <li>🖱️ Left click + drag: Rotate camera</li>
           <li>🖱️ Right click + drag: Pan camera</li>
           <li>🖱️ Scroll: Zoom in/out</li>
           <li>📦 Click entry: Select</li>
           <li>✏️ Click [Edit] on selected: Open editor</li>
+          <li>➕ Add Entry: Create new entry</li>
         </ul>
       </div>
     </div>

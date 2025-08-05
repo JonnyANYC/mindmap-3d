@@ -68,6 +68,8 @@ export const useMindMapStore = create<MindMapState>()(
       
       set((state) => {
         state.entries.push(newEntry)
+        // Auto-select the newly created entry
+        state.selectedEntryId = newEntry.id
       })
       
       return newEntry
