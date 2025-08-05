@@ -82,13 +82,17 @@
 - Create save/load functionality
 
 ## Phase 6: UI Polish & Controls
-### 6.1 Update Help Overlay
+### 6.1 improve the overall layout
+ - the canvas should use all of the visible space. It has a fixed height. make the help overlay appear on top of the canvas  
+ - Put the Add Entry button somewhere useful and more prominent. 
+ 
+### 6.2 Update Help Overlay
 - Style help overlay in lower-left corner
 - Add semi-transparent background
 - Include all control instructions
 - Add dynamic position indicators
 
-### 6.2 Keyboard Shortcuts
+### 6.3 Keyboard Shortcuts
 - Implement ESC key for closing editor
 - Implement ESC key for canceling movement
 - Add other helpful shortcuts (Delete key, etc.)
@@ -122,6 +126,10 @@
 5. **Week 5**: Phase 5 (State & Persistence)
 6. **Week 6**: Phase 6 (UI Polish) + Phase 7 (Performance & Testing)
 7. **Week 7**: Phase 8 (Camera Position Indicators)
+
+## Baklog phase: post-launch options
+### Backlog.1: UI
+ - if space permits, display a delete button conditionally, near the Add Entry button, whenever an Entry is seleted, and then remove it when the Entry is unselected.
 
 ## Key Technical Decisions
 - Use Tiptap for WYSIWYG editor (better React integration)

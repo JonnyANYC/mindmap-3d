@@ -765,7 +765,7 @@ export default function Scene3D() {
   }
   
   return (
-    <div className="w-full bg-gray-900" style={{ height: '550px', cursor: getCursorStyle() }}>
+    <div className="w-full h-full bg-gray-900" style={{ cursor: getCursorStyle() }}>
       <Canvas 
         onPointerMissed={() => {
           // Only deselect when clicking on empty space
@@ -854,20 +854,18 @@ export default function Scene3D() {
         })}
       </Canvas>
       
-      {/* Add Entry Button */}
-      <div className="absolute top-4 right-4">
-        <Button 
-          onClick={handleAddEntry}
-          size="lg"
-          className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
-        >
-          <Plus className="mr-2 h-5 w-5" />
-          Add Entry
-        </Button>
-      </div>
+      {/* Add Entry Button - Floating Action Button */}
+      <button
+        type="button"
+        onClick={handleAddEntry}
+        className="absolute bottom-6 right-6 z-20 bg-green-600 hover:bg-green-700 text-white shadow-xl rounded-full h-16 w-16 p-0 flex items-center justify-center transition-transform hover:scale-110"
+        title="Add Entry"
+      >
+        <Plus className="h-8 w-8" />
+      </button>
       
       {/* Help Overlay */}
-      <div className="absolute bottom-4 left-4 bg-gray-800/90 text-white p-4 rounded-lg shadow-lg">
+      <div className="absolute bottom-4 left-4 bg-gray-800/90 text-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
         <h2 className="text-lg font-bold mb-2">3D Mind Map controls</h2>
         <ul className="text-sm space-y-1">
           <li>🖱️ Left click + drag: Rotate camera</li>
