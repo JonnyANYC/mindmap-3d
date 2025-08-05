@@ -1,7 +1,7 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Box, Plane, Grid, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
+import { OrbitControls, Box, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
 import { useRef, useState, useMemo } from 'react'
 import { Mesh, Vector3 } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -195,16 +195,22 @@ export default function Scene3D() {
   const { selectEntry } = useEntryActions()
   
   return (
-    <div className="w-full bg-gray-100" style={{ height: '550px' }}>
+    <div className="w-full bg-gray-900" style={{ height: '550px' }}>
       <Canvas 
-        shadows
         onClick={() => selectEntry(null)}
+        gl={{ antialias: true }}
+        camera={{ fov: 75 }}
       >
+        <color attach="background" args={['#1a1a2e']} />
+        <fog attach="fog" args={['#1a1a2e', 10, 50]} />
+        
         <PerspectiveCamera makeDefault position={[5, 5, 5]} />
         <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
         
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
+        <ambientLight intensity={0.3} />
+        <directionalLight position={[10, 10, 5]} intensity={0.8} />
+        <directionalLight position={[-5, 5, -5]} intensity={0.4} />
+        <pointLight position={[0, 5, 0]} intensity={0.3} />
         
         {/* Render all entries */}
         {entries.map(entry => (
@@ -227,17 +233,6 @@ export default function Scene3D() {
             />
           )
         })}
-        
-        <Plane
-          args={[10, 10]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, -1, 0]}
-          receiveShadow
-        >
-          <meshStandardMaterial color="lightgray" />
-        </Plane>
-        
-        <Grid args={[10, 10]} position={[0, -0.99, 0]} />
       </Canvas>
       
       <div className="absolute top-4 left-4 bg-white p-4 rounded-lg shadow-lg">

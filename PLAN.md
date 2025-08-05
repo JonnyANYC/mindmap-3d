@@ -2,8 +2,8 @@
 
 ## Phase 1: Core UI Components & Basic Setup
 ### 1.1 Install Required Dependencies
-- [ ] Install additional UI components from shadcn/ui (Dialog, Button, etc.)
-- [ ] Install any missing type definitions
+- [x] Install additional UI components from shadcn/ui (Dialog, Button, etc.) ✓
+- [x] Install any missing type definitions ✓
 
 ### 1.2 Update Entry Component
 - [x] Add text display on both z-axis surfaces (positive and negative) ✓
