@@ -6,6 +6,7 @@ export const useEntries = () => useMindMapStore(state => state.entries)
 export const useConnections = () => useMindMapStore(state => state.connections)
 export const useSelectedEntryId = () => useMindMapStore(state => state.selectedEntryId)
 export const useHoveredEntryId = () => useMindMapStore(state => state.hoveredEntryId)
+export const useConnectionFeedback = () => useMindMapStore(state => state.connectionFeedback)
 
 // Computed selectors
 export const useSelectedEntry = () => useMindMapStore(state => state.getSelectedEntry())
@@ -19,6 +20,7 @@ export const useEntryActions = () => {
   const moveEntry = useMindMapStore(state => state.moveEntry)
   const selectEntry = useMindMapStore(state => state.selectEntry)
   const hoverEntry = useMindMapStore(state => state.hoverEntry)
+  const toggleConnection = useMindMapStore(state => state.toggleConnection)
   
   return {
     addEntry,
@@ -26,7 +28,8 @@ export const useEntryActions = () => {
     deleteEntry,
     moveEntry,
     selectEntry,
-    hoverEntry
+    hoverEntry,
+    toggleConnection
   }
 }
 
@@ -36,13 +39,19 @@ export const useConnectionActions = () => {
   const toggleConnection = useMindMapStore(state => state.toggleConnection)
   const getConnectionBetween = useMindMapStore(state => state.getConnectionBetween)
   const removeConnectionsForEntry = useMindMapStore(state => state.removeConnectionsForEntry)
+  const undoConnection = useMindMapStore(state => state.undoConnection)
+  const redoConnection = useMindMapStore(state => state.redoConnection)
+  const clearConnectionFeedback = useMindMapStore(state => state.clearConnectionFeedback)
   
   return {
     addConnection,
     removeConnection,
     toggleConnection,
     getConnectionBetween,
-    removeConnectionsForEntry
+    removeConnectionsForEntry,
+    undoConnection,
+    redoConnection,
+    clearConnectionFeedback
   }
 }
 

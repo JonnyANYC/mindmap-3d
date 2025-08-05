@@ -4,12 +4,31 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Entry, Connection, MindMap, Position3D } from '@/types/mindmap'
 import { DEFAULT_ENTRY_COLOR } from '@/types/mindmap'
 
+interface ConnectionOperation {
+  id: string
+  type: 'add' | 'remove'
+  sourceId: string
+  targetId: string
+  connectionId: string
+  timestamp: Date
+}
+
 interface MindMapState {
   entries: Entry[]
   connections: Connection[]
   selectedEntryId: string | null
   hoveredEntryId: string | null
   mindMapId: string | null
+  
+  // Connection feedback
+  connectionFeedback: {
+    message: string
+    lastOperation?: ConnectionOperation
+  } | null
+  
+  // Connection history for undo/redo
+  connectionHistory: ConnectionOperation[]
+  connectionHistoryIndex: number
   
   // Entry actions
   addEntry: (position?: Position3D) => Entry
@@ -25,6 +44,11 @@ interface MindMapState {
   toggleConnection: (sourceId: string, targetId: string) => void
   getConnectionBetween: (id1: string, id2: string) => Connection | undefined
   removeConnectionsForEntry: (entryId: string) => void
+  
+  // Connection history actions
+  undoConnection: () => void
+  redoConnection: () => void
+  clearConnectionFeedback: () => void
   
   // Utility actions
   clearMindMap: () => void
@@ -53,6 +77,9 @@ export const useMindMapStore = create<MindMapState>()(
     selectedEntryId: null,
     hoveredEntryId: null,
     mindMapId: null,
+    connectionFeedback: null,
+    connectionHistory: [],
+    connectionHistoryIndex: -1,
     
     // Entry actions
     addEntry: (position?: Position3D) => {
@@ -145,21 +172,69 @@ export const useMindMapStore = create<MindMapState>()(
         createdAt: new Date()
       }
       
+      const operation: ConnectionOperation = {
+        id: uuidv4(),
+        type: 'add',
+        sourceId,
+        targetId,
+        connectionId: newConnection.id,
+        timestamp: new Date()
+      }
+      
       set((state) => {
         state.connections.push(newConnection)
+        
+        // Clear any redo history when new operation is performed
+        if (state.connectionHistoryIndex < state.connectionHistory.length - 1) {
+          state.connectionHistory = state.connectionHistory.slice(0, state.connectionHistoryIndex + 1)
+        }
+        
+        // Add to history
+        state.connectionHistory.push(operation)
+        state.connectionHistoryIndex = state.connectionHistory.length - 1
+        
+        // Show feedback
+        state.connectionFeedback = {
+          message: 'Connection Added. Click to remove',
+          lastOperation: operation
+        }
       })
       
       return newConnection
     },
     
     removeConnection: (sourceId: string, targetId: string) => {
+      const connectionToRemove = get().getConnectionBetween(sourceId, targetId)
+      if (!connectionToRemove) return
+      
+      const operation: ConnectionOperation = {
+        id: uuidv4(),
+        type: 'remove',
+        sourceId: connectionToRemove.sourceId,
+        targetId: connectionToRemove.targetId,
+        connectionId: connectionToRemove.id,
+        timestamp: new Date()
+      }
+      
       set((state) => {
         state.connections = state.connections.filter(
-          c => !(
-            (c.sourceId === sourceId && c.targetId === targetId) ||
-            (c.sourceId === targetId && c.targetId === sourceId)
-          )
+          c => c.id !== connectionToRemove.id
         )
+        
+        // Clear any redo history when new operation is performed
+        if (state.connectionHistoryIndex < state.connectionHistory.length - 1) {
+          state.connectionHistory = state.connectionHistory.slice(0, state.connectionHistoryIndex + 1)
+        }
+        
+        // Add to history
+        state.connectionHistory.push(operation)
+        state.connectionHistoryIndex = state.connectionHistory.length - 1
+        
+        // Show feedback
+        state.connectionFeedback = {
+          message: 'Connection Removed. Click to undo',
+          lastOperation: operation
+        }
       })
     },
     
@@ -184,6 +259,69 @@ export const useMindMapStore = create<MindMapState>()(
         state.connections = state.connections.filter(
           c => c.sourceId !== entryId && c.targetId !== entryId
         )
+      })
+    },
+    
+    // Connection history actions
+    undoConnection: () => {
+      const history = get().connectionHistory
+      const currentIndex = get().connectionHistoryIndex
+      
+      if (currentIndex < 0) return
+      
+      const operation = history[currentIndex]
+      
+      set((state) => {
+        if (operation.type === 'add') {
+          // Undo add by removing the connection
+          state.connections = state.connections.filter(c => c.id !== operation.connectionId)
+        } else {
+          // Undo remove by re-adding the connection
+          const connection: Connection = {
+            id: operation.connectionId,
+            sourceId: operation.sourceId,
+            targetId: operation.targetId,
+            createdAt: new Date()
+          }
+          state.connections.push(connection)
+        }
+        
+        state.connectionHistoryIndex = currentIndex - 1
+        state.connectionFeedback = null
+      })
+    },
+    
+    redoConnection: () => {
+      const history = get().connectionHistory
+      const currentIndex = get().connectionHistoryIndex
+      
+      if (currentIndex >= history.length - 1) return
+      
+      const operation = history[currentIndex + 1]
+      
+      set((state) => {
+        if (operation.type === 'add') {
+          // Redo add by re-adding the connection
+          const connection: Connection = {
+            id: operation.connectionId,
+            sourceId: operation.sourceId,
+            targetId: operation.targetId,
+            createdAt: new Date()
+          }
+          state.connections.push(connection)
+        } else {
+          // Redo remove by removing the connection
+          state.connections = state.connections.filter(c => c.id !== operation.connectionId)
+        }
+        
+        state.connectionHistoryIndex = currentIndex + 1
+        state.connectionFeedback = null
+      })
+    },
+    
+    clearConnectionFeedback: () => {
+      set((state) => {
+        state.connectionFeedback = null
       })
     },
     

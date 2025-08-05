@@ -2,7 +2,7 @@
 
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import { Mesh, Vector3, Camera } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { 
@@ -10,12 +10,15 @@ import {
   useConnections, 
   useSelectedEntryId,
   useHoveredEntryId,
-  useEntryActions 
+  useEntryActions,
+  useConnectionFeedback,
+  useConnectionActions
 } from '@/hooks/useMindMapStore'
 import { DEFAULT_ENTRY_COLOR, SELECTED_ENTRY_COLOR, HOVERED_ENTRY_COLOR } from '@/types/mindmap'
 import type { Entry as EntryType, Connection as ConnectionType } from '@/types/mindmap'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
+import { ConnectionFeedback } from '@/components/ConnectionFeedback'
 
 interface EntryProps {
   entry: EntryType
@@ -25,7 +28,8 @@ function Entry({ entry }: EntryProps) {
   const meshRef = useRef<Mesh>(null!)
   const selectedEntryId = useSelectedEntryId()
   const hoveredEntryId = useHoveredEntryId()
-  const { selectEntry, hoverEntry } = useEntryActions()
+  const { selectEntry, hoverEntry, toggleConnection } = useEntryActions()
+  const { clearConnectionFeedback } = useConnectionActions()
   
   const isSelected = selectedEntryId === entry.id
   const isHovered = hoveredEntryId === entry.id
@@ -37,12 +41,24 @@ function Entry({ entry }: EntryProps) {
       : entry.color || DEFAULT_ENTRY_COLOR
 
   return (
-    <group position={entry.position}>
+    <group position={entry.position} userData={{ isEntry: true }}>
       <mesh
         ref={meshRef}
         onClick={(e) => {
           e.stopPropagation()
-          selectEntry(entry.id)
+          
+          // Clear feedback on any entry click
+          clearConnectionFeedback()
+          
+          // Check if Ctrl or Cmd is pressed
+          const event = e.nativeEvent as MouseEvent
+          if ((event.ctrlKey || event.metaKey) && selectedEntryId && selectedEntryId !== entry.id) {
+            // Ctrl+Click: Toggle connection with selected entry
+            toggleConnection(selectedEntryId, entry.id)
+          } else {
+            // Normal click: Select entry
+            selectEntry(entry.id)
+          }
         }}
         onPointerOver={(e) => {
           e.stopPropagation()
@@ -268,11 +284,42 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
   )
 }
 
-function CameraController({ cameraRef }: { cameraRef: { current: Camera | null } }) {
+function CameraController({ 
+  cameraRef, 
+  onCameraMove 
+}: { 
+  cameraRef: { current: Camera | null }
+  onCameraMove?: () => void 
+}) {
   const { camera } = useThree()
+  const previousPosition = useRef(new Vector3())
+  const previousRotation = useRef(new Vector3())
   
   useFrame(() => {
     cameraRef.current = camera
+    
+    // Check for camera movement
+    if (onCameraMove) {
+      const positionThreshold = 0.1
+      const rotationThreshold = 0.01
+      
+      const positionDelta = camera.position.distanceTo(previousPosition.current)
+      const rotationDelta = new Vector3(
+        camera.rotation.x,
+        camera.rotation.y,
+        camera.rotation.z
+      ).distanceTo(previousRotation.current)
+      
+      if (positionDelta > positionThreshold || rotationDelta > rotationThreshold) {
+        onCameraMove()
+        previousPosition.current.copy(camera.position)
+        previousRotation.current.set(
+          camera.rotation.x,
+          camera.rotation.y,
+          camera.rotation.z
+        )
+      }
+    }
   })
   
   return null
@@ -283,7 +330,28 @@ export default function Scene3D() {
   const connections = useConnections()
   const { selectEntry, addEntry } = useEntryActions()
   const selectedEntryId = useSelectedEntryId()
+  const connectionFeedback = useConnectionFeedback()
+  const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
+  
+  // Handle keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl/Cmd + Z (undo)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undoConnection()
+      }
+      // Check for Ctrl/Cmd + Shift + Z (redo)
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+        e.preventDefault()
+        redoConnection()
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [undoConnection, redoConnection])
   
   const handleAddEntry = () => {
     if (!cameraRef.current) {
@@ -343,7 +411,10 @@ export default function Scene3D() {
         
         <PerspectiveCamera makeDefault position={[5, 5, 5]} />
         <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
-        <CameraController cameraRef={cameraRef} />
+        <CameraController 
+          cameraRef={cameraRef} 
+          onCameraMove={clearConnectionFeedback}
+        />
         
         <ambientLight intensity={0.3} />
         <directionalLight position={[10, 10, 5]} intensity={0.8} />
@@ -393,10 +464,28 @@ export default function Scene3D() {
           <li>🖱️ Right click + drag: Pan camera</li>
           <li>🖱️ Scroll: Zoom in/out</li>
           <li>📦 Click entry: Select</li>
+          <li>🔗 Ctrl/Cmd + Click: Toggle connection</li>
+          <li>↩️ Ctrl/Cmd + Z: Undo connection</li>
+          <li>↪️ Ctrl/Cmd + Shift + Z: Redo connection</li>
           <li>✏️ Click [Edit] on selected: Open editor</li>
           <li>➕ Add Entry: Create new entry</li>
         </ul>
       </div>
+      
+      {/* Connection Feedback */}
+      {connectionFeedback && (
+        <ConnectionFeedback
+          message={connectionFeedback.message}
+          onDismiss={() => {
+            if (connectionFeedback.lastOperation) {
+              // If clicking on the feedback, perform the undo action
+              undoConnection()
+            } else {
+              clearConnectionFeedback()
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
