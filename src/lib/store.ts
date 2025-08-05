@@ -1,8 +1,12 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import type { Entry, Connection, MindMap, Position3D } from '@/types/mindmap'
 import { DEFAULT_ENTRY_COLOR } from '@/types/mindmap'
+
+// Enable Map support in Immer
+enableMapSet()
 
 interface ConnectionOperation {
   id: string
@@ -17,6 +21,22 @@ interface DeletedEntry {
   entry: Entry
   connections: Connection[]
   deletedAt: Date
+}
+
+type MovementMode = 'plane' | 'depth' | null
+
+interface OverlayData {
+  message?: string
+  lastOperation?: ConnectionOperation
+  position?: Position3D
+  [key: string]: unknown
+}
+
+interface OverlayState {
+  visible: boolean
+  data?: OverlayData
+  autoDismiss?: boolean
+  dismissTimeout?: number
 }
 
 interface MindMapState {
@@ -42,6 +62,16 @@ interface MindMapState {
   // Editor state
   isEditorOpen: boolean
   editingEntryId: string | null
+  
+  // Movement state
+  movingEntryId: string | null
+  movementStartPosition: Position3D | null
+  movementGhostPosition: Position3D | null
+  movementMode: MovementMode
+  isCameraLocked: boolean
+  
+  // UI Overlay state - using object instead of Map for Immer compatibility
+  overlays: Record<string, OverlayState>
   
   // Entry actions
   addEntry: (position?: Position3D) => Entry
@@ -79,6 +109,19 @@ interface MindMapState {
   // Editor actions
   openEditor: (entryId: string) => void
   closeEditor: () => void
+  
+  // Movement actions
+  startMovement: (entryId: string, position: Position3D, mode: MovementMode) => void
+  updateMovementPosition: (position: Position3D) => void
+  confirmMovement: () => void
+  cancelMovement: () => void
+  
+  // Overlay actions
+  showOverlay: (type: string, data?: OverlayData, autoDismiss?: boolean, dismissTimeout?: number) => void
+  hideOverlay: (type: string) => void
+  clearAllOverlays: () => void
+  updateOverlayData: (type: string, data: OverlayData) => void
+  isOverlayVisible: (type: string) => boolean
 }
 
 const getRandomPosition = (): Position3D => {
@@ -102,6 +145,12 @@ export const useMindMapStore = create<MindMapState>()(
     deletedEntries: [],
     isEditorOpen: false,
     editingEntryId: null,
+    movingEntryId: null,
+    movementStartPosition: null,
+    movementGhostPosition: null,
+    movementMode: null,
+    isCameraLocked: false,
+    overlays: {},
     
     // Entry actions
     addEntry: (position?: Position3D) => {
@@ -275,10 +324,21 @@ export const useMindMapStore = create<MindMapState>()(
         state.connectionHistory.push(operation)
         state.connectionHistoryIndex = state.connectionHistory.length - 1
         
-        // Show feedback
+        // Show feedback using overlay system
         state.connectionFeedback = {
           message: 'Connection Added. Click to remove',
           lastOperation: operation
+        }
+        
+        // Also show as overlay
+        state.overlays['connectionFeedback'] = {
+          visible: true,
+          data: {
+            message: 'Connection Added. Click to remove',
+            lastOperation: operation
+          },
+          autoDismiss: true,
+          dismissTimeout: 3000
         }
       })
       
@@ -312,10 +372,21 @@ export const useMindMapStore = create<MindMapState>()(
         state.connectionHistory.push(operation)
         state.connectionHistoryIndex = state.connectionHistory.length - 1
         
-        // Show feedback
+        // Show feedback using overlay system
         state.connectionFeedback = {
           message: 'Connection Removed. Click to undo',
           lastOperation: operation
+        }
+        
+        // Also show as overlay
+        state.overlays['connectionFeedback'] = {
+          visible: true,
+          data: {
+            message: 'Connection Removed. Click to undo',
+            lastOperation: operation
+          },
+          autoDismiss: true,
+          dismissTimeout: 3000
         }
       })
     },
@@ -404,6 +475,10 @@ export const useMindMapStore = create<MindMapState>()(
     clearConnectionFeedback: () => {
       set((state) => {
         state.connectionFeedback = null
+        // Also hide the overlay
+        if (state.overlays['connectionFeedback']) {
+          state.overlays['connectionFeedback'].visible = false
+        }
       })
     },
     
@@ -479,6 +554,112 @@ export const useMindMapStore = create<MindMapState>()(
         state.isEditorOpen = false
         state.editingEntryId = null
       })
+    },
+    
+    // Movement actions
+    startMovement: (entryId: string, position: Position3D, mode: MovementMode) => {
+      const entry = get().getEntryById(entryId)
+      if (!entry) return
+      
+      set((state) => {
+        state.movingEntryId = entryId
+        state.movementStartPosition = [...entry.position] as Position3D
+        state.movementGhostPosition = [...entry.position] as Position3D
+        state.movementMode = mode
+        state.isCameraLocked = true
+      })
+    },
+    
+    updateMovementPosition: (position: Position3D) => {
+      set((state) => {
+        if (state.movingEntryId) {
+          state.movementGhostPosition = position
+        }
+      })
+    },
+    
+    confirmMovement: () => {
+      const movingId = get().movingEntryId
+      const ghostPosition = get().movementGhostPosition
+      
+      if (movingId && ghostPosition) {
+        get().moveEntry(movingId, ghostPosition)
+      }
+      
+      set((state) => {
+        state.movingEntryId = null
+        state.movementStartPosition = null
+        state.movementGhostPosition = null
+        state.movementMode = null
+        state.isCameraLocked = false
+      })
+    },
+    
+    cancelMovement: () => {
+      const movingId = get().movingEntryId
+      const startPosition = get().movementStartPosition
+      
+      if (movingId && startPosition) {
+        get().moveEntry(movingId, startPosition)
+      }
+      
+      set((state) => {
+        state.movingEntryId = null
+        state.movementStartPosition = null
+        state.movementGhostPosition = null
+        state.movementMode = null
+        state.isCameraLocked = false
+      })
+    },
+    
+    // Overlay actions
+    showOverlay: (type: string, data?: OverlayData, autoDismiss?: boolean, dismissTimeout?: number) => {
+      set((state) => {
+        state.overlays[type] = {
+          visible: true,
+          data,
+          autoDismiss,
+          dismissTimeout
+        }
+      })
+      
+      // Handle auto-dismiss
+      if (autoDismiss && dismissTimeout) {
+        setTimeout(() => {
+          get().hideOverlay(type)
+        }, dismissTimeout)
+      }
+    },
+    
+    hideOverlay: (type: string) => {
+      set((state) => {
+        if (state.overlays[type]) {
+          state.overlays[type].visible = false
+        }
+      })
+    },
+    
+    clearAllOverlays: () => {
+      set((state) => {
+        Object.keys(state.overlays).forEach(type => {
+          if (state.overlays[type]) {
+            state.overlays[type].visible = false
+          }
+        })
+      })
+    },
+    
+    updateOverlayData: (type: string, data: OverlayData) => {
+      set((state) => {
+        if (state.overlays[type]) {
+          state.overlays[type].data = data
+        }
+      })
+    },
+    
+    isOverlayVisible: (type: string) => {
+      const overlay = get().overlays[type]
+      return overlay?.visible || false
     }
   }))
 )
