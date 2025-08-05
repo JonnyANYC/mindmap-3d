@@ -20,6 +20,8 @@ import type { Entry as EntryType, Connection as ConnectionType, Position3D } fro
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { ConnectionFeedback } from '@/components/ConnectionFeedback'
+import { useToast } from '@/hooks/use-toast'
+import { useMindMapStore } from '@/lib/store'
 
 interface EntryProps {
   entry: EntryType
@@ -572,12 +574,13 @@ function DragController({
 export default function Scene3D() {
   const entries = useEntries()
   const connections = useConnections()
-  const { selectEntry, addEntry, moveEntry } = useEntryActions()
+  const { selectEntry, addEntry, moveEntry, deleteEntry } = useEntryActions()
   const selectedEntryId = useSelectedEntryId()
   const connectionFeedback = useConnectionFeedback()
   const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
+  const { toast } = useToast()
   
   // Drag state
   const [dragState, setDragState] = useState<{
@@ -637,7 +640,7 @@ export default function Scene3D() {
     }
   }, [dragState, moveEntry])
 
-  // Handle keyboard shortcuts for undo/redo and ESC cancellation
+  // Handle keyboard shortcuts for undo/redo, ESC cancellation, and Delete
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for ESC key during drag
@@ -659,6 +662,45 @@ export default function Scene3D() {
           orbitControlsRef.current.enabled = true
         }
       }
+      // Check for Delete key when an entry is selected
+      else if (e.key === 'Delete' && selectedEntryId) {
+        e.preventDefault()
+        const entryToDelete = entries.find(e => e.id === selectedEntryId)
+        if (entryToDelete) {
+          // Store the ID and summary before deletion
+          const deletedId = entryToDelete.id
+          const deletedSummary = entryToDelete.summary
+          
+          deleteEntry(selectedEntryId)
+          
+          // Show toast with undo option
+          toast({
+            title: "Entry deleted",
+            description: `"${deletedSummary}" has been deleted.`,
+            action: (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Get the latest deleted entries from the store
+                  const currentDeletedEntries = useMindMapStore.getState().deletedEntries
+                  const deletedEntry = currentDeletedEntries.find(de => de.entry.id === deletedId)
+                  if (deletedEntry) {
+                    useMindMapStore.getState().restoreDeletedEntry(deletedEntry)
+                    toast({
+                      title: "Entry restored",
+                      description: `"${deletedSummary}" has been restored.`,
+                    })
+                  }
+                }}
+              >
+                Undo
+              </Button>
+            ),
+            duration: 30000, // 30 seconds to undo
+          })
+        }
+      }
       // Check for Ctrl/Cmd + Z (undo)
       else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
@@ -673,7 +715,7 @@ export default function Scene3D() {
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd])
+  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast])
   
   const handleAddEntry = () => {
     if (!cameraRef.current) {
@@ -836,6 +878,7 @@ export default function Scene3D() {
           <li>🖱️ Scroll: Zoom in/out</li>
           <li>📦 Click entry: Select</li>
           <li>🔗 Ctrl/Cmd + Click: Toggle connection</li>
+          <li>🗑️ Delete: Delete selected entry</li>
           <li>↩️ Ctrl/Cmd + Z: Undo connection</li>
           <li>↪️ Ctrl/Cmd + Shift + Z: Redo connection</li>
           <li>✏️ Click [Edit] on selected: Open editor</li>
