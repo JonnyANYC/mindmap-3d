@@ -2,8 +2,9 @@
 
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
-import { useRef, useState, useMemo, useEffect } from 'react'
-import { Mesh, Vector3, Camera } from 'three'
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
+import { Mesh, Vector3, Camera, OrbitControls as OrbitControlsImpl } from 'three'
+import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { 
   useEntries, 
@@ -15,16 +16,88 @@ import {
   useConnectionActions
 } from '@/hooks/useMindMapStore'
 import { DEFAULT_ENTRY_COLOR, SELECTED_ENTRY_COLOR, HOVERED_ENTRY_COLOR } from '@/types/mindmap'
-import type { Entry as EntryType, Connection as ConnectionType } from '@/types/mindmap'
+import type { Entry as EntryType, Connection as ConnectionType, Position3D } from '@/types/mindmap'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { ConnectionFeedback } from '@/components/ConnectionFeedback'
 
 interface EntryProps {
   entry: EntryType
+  onDragStart?: (entryId: string, isShiftKey: boolean) => void
+  onDragEnd?: () => void
+  isDragging?: boolean
 }
 
-function Entry({ entry }: EntryProps) {
+// Custom hook to determine if positive Z side is facing camera
+function useIsFacingCamera(position: Position3D) {
+  const { camera } = useThree()
+  const [isFacingCamera, setIsFacingCamera] = useState(true)
+  
+  useFrame(() => {
+    // Get vector from entry to camera
+    const entryPos = new Vector3(...position)
+    const cameraToEntry = entryPos.clone().sub(camera.position)
+    
+    // Check if the positive Z normal is facing towards the camera
+    // If dot product is negative, positive Z is facing camera
+    const dotProduct = cameraToEntry.dot(new Vector3(0, 0, 1))
+    setIsFacingCamera(dotProduct < 0)
+  })
+  
+  return isFacingCamera
+}
+
+interface GhostEntryProps {
+  position: Position3D
+  opacity: number
+  color: string
+  summary: string
+  hideBackText?: boolean
+}
+
+function GhostEntry({ position, opacity, color, summary, hideBackText = false }: GhostEntryProps) {
+  const isFrontFacingCamera = useIsFacingCamera(position)
+  
+  return (
+    <group position={position}>
+      <mesh>
+        <boxGeometry args={[1, 1, 0.05]} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} />
+      </mesh>
+      <Text
+        visible={!hideBackText || isFrontFacingCamera}
+        position={[0, 0, 0.026]}
+        fontSize={0.15}
+        color="white"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={0.9}
+        // @ts-expect-error - material props
+        material-opacity={opacity}
+        material-transparent
+      >
+        {summary}
+      </Text>
+      <Text
+        visible={!hideBackText || !isFrontFacingCamera}
+        position={[0, 0, -0.026]}
+        fontSize={0.15}
+        color="white"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={0.9}
+        rotation={[0, Math.PI, 0]}
+        // @ts-expect-error - material props
+        material-opacity={opacity}
+        material-transparent
+      >
+        {summary}
+      </Text>
+    </group>
+  )
+}
+
+function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   const meshRef = useRef<Mesh>(null!)
   const selectedEntryId = useSelectedEntryId()
   const hoveredEntryId = useHoveredEntryId()
@@ -40,39 +113,109 @@ function Entry({ entry }: EntryProps) {
       ? HOVERED_ENTRY_COLOR 
       : entry.color || DEFAULT_ENTRY_COLOR
 
+  // Drag detection state
+  const [dragStartPos, setDragStartPos] = useState<[number, number] | null>(null)
+  const [pointerDown, setPointerDown] = useState(false)
+  const dragThreshold = 5 // pixels
+  
+  // Determine which text to show during drag
+  const isFrontFacingCamera = useIsFacingCamera(entry.position)
+  
+  // Handle global pointer events for drag
+  useEffect(() => {
+    if (!pointerDown && !isDragging) return
+    
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      if (pointerDown && dragStartPos && !isDragging) {
+        const deltaX = e.clientX - dragStartPos[0]
+        const deltaY = e.clientY - dragStartPos[1]
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+        
+        // Check if we've moved past the drag threshold
+        if (distance > dragThreshold) {
+          // Start dragging
+          if (onDragStart) {
+            onDragStart(entry.id, e.shiftKey)
+          }
+          setPointerDown(false)
+          setDragStartPos(null)
+        }
+      }
+    }
+    
+    const handleGlobalPointerUp = () => {
+      if (pointerDown) {
+        setPointerDown(false)
+        setDragStartPos(null)
+      }
+      if (isDragging && onDragEnd) {
+        onDragEnd()
+      }
+    }
+    
+    window.addEventListener('pointermove', handleGlobalPointerMove)
+    window.addEventListener('pointerup', handleGlobalPointerUp)
+    window.addEventListener('pointercancel', handleGlobalPointerUp)
+    
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalPointerMove)
+      window.removeEventListener('pointerup', handleGlobalPointerUp)
+      window.removeEventListener('pointercancel', handleGlobalPointerUp)
+    }
+  }, [pointerDown, isDragging, dragStartPos, onDragStart, onDragEnd, entry.id])
+
   return (
     <group position={entry.position} userData={{ isEntry: true }}>
       <mesh
+        visible={!isDragging}
         ref={meshRef}
         onClick={(e) => {
           e.stopPropagation()
           
-          // Clear feedback on any entry click
-          clearConnectionFeedback()
+          // Only process click if not dragging
+          if (!isDragging && !pointerDown) {
+            // Clear feedback on any entry click
+            clearConnectionFeedback()
+            
+            // Check if Ctrl or Cmd is pressed
+            const event = e.nativeEvent as MouseEvent
+            if ((event.ctrlKey || event.metaKey) && selectedEntryId && selectedEntryId !== entry.id) {
+              // Ctrl+Click: Toggle connection with selected entry
+              toggleConnection(selectedEntryId, entry.id)
+            } else {
+              // Normal click: Select entry
+              selectEntry(entry.id)
+            }
+          }
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation()
           
-          // Check if Ctrl or Cmd is pressed
-          const event = e.nativeEvent as MouseEvent
-          if ((event.ctrlKey || event.metaKey) && selectedEntryId && selectedEntryId !== entry.id) {
-            // Ctrl+Click: Toggle connection with selected entry
-            toggleConnection(selectedEntryId, entry.id)
-          } else {
-            // Normal click: Select entry
-            selectEntry(entry.id)
+          // Only allow dragging if this entry is selected
+          if (isSelected) {
+            setPointerDown(true)
+            const event = e.nativeEvent as PointerEvent
+            setDragStartPos([event.clientX, event.clientY])
           }
         }}
         onPointerOver={(e) => {
           e.stopPropagation()
-          hoverEntry(entry.id)
+          if (!isDragging) {
+            hoverEntry(entry.id)
+          }
         }}
         onPointerOut={(e) => {
           e.stopPropagation()
-          hoverEntry(null)
+          if (!isDragging) {
+            hoverEntry(null)
+          }
         }}
       >
         <boxGeometry args={[1, 1, 0.05]} />
         <meshStandardMaterial color={color} />
       </mesh>
       <Text
+        visible={!isDragging || isFrontFacingCamera}
         position={[0, 0, 0.026]}
         fontSize={0.15}
         color="white"
@@ -85,6 +228,7 @@ function Entry({ entry }: EntryProps) {
         {entry.summary}
       </Text>
       <Text
+        visible={!isDragging || !isFrontFacingCamera}
         position={[0, 0, -0.026]}
         fontSize={0.15}
         color="white"
@@ -97,8 +241,17 @@ function Entry({ entry }: EntryProps) {
       >
         {entry.summary}
       </Text>
-      {isSelected && (
+      {isSelected && !isDragging && (
         <>
+          <Text
+            position={[0, 0.45, 0.026]}
+            fontSize={0.06}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Click and drag to move
+          </Text>
           <Text
             position={[0, -0.35, 0.026]}
             fontSize={0.08}
@@ -325,20 +478,189 @@ function CameraController({
   return null
 }
 
+function DragController({
+  dragState,
+  setDragState
+}: {
+  dragState: {
+    isDragging: boolean
+    entryId: string | null
+    isShiftDrag: boolean
+    originalPosition: Position3D | null
+    previewPosition: Position3D | null
+    startPoint: Vector3 | null
+  }
+  setDragState: React.Dispatch<React.SetStateAction<{
+    isDragging: boolean
+    entryId: string | null
+    isShiftDrag: boolean
+    originalPosition: Position3D | null
+    previewPosition: Position3D | null
+    startPoint: Vector3 | null
+  }>>
+}) {
+  const { camera, raycaster, pointer } = useThree()
+  const planeRef = useRef<THREE.Plane | null>(null)
+  const intersectionPointRef = useRef(new Vector3())
+  const dragOffsetRef = useRef(new Vector3())
+  
+  useEffect(() => {
+    if (dragState.isDragging && dragState.startPoint) {
+      // Create a plane perpendicular to the camera view at the entry position
+      const cameraDirection = new Vector3()
+      camera.getWorldDirection(cameraDirection)
+      
+      // Create the plane normal (perpendicular to camera direction)
+      planeRef.current = new THREE.Plane(cameraDirection, -cameraDirection.dot(dragState.startPoint))
+      
+      // Calculate initial intersection to get drag offset
+      raycaster.setFromCamera(pointer, camera)
+      if (planeRef.current) {
+        raycaster.ray.intersectPlane(planeRef.current, intersectionPointRef.current)
+        dragOffsetRef.current.subVectors(dragState.startPoint, intersectionPointRef.current)
+      }
+    }
+  }, [dragState.isDragging, dragState.startPoint, camera, pointer, raycaster])
+  
+  useFrame(() => {
+    if (!dragState.isDragging || !dragState.entryId || !planeRef.current) return
+    
+    if (dragState.isShiftDrag) {
+      // Depth movement (Shift+drag)
+      const entry = dragState.startPoint
+      if (!entry) return
+      
+      // Use vertical mouse movement for depth
+      const depthDelta = -pointer.y * 2 // Negative for intuitive movement
+      const cameraDirection = new Vector3()
+      camera.getWorldDirection(cameraDirection)
+      
+      // Calculate new position along camera direction
+      const newPosition = entry.clone().add(cameraDirection.multiplyScalar(depthDelta))
+      
+      // Clamp distance from camera
+      const distanceFromCamera = camera.position.distanceTo(newPosition)
+      if (distanceFromCamera >= 1 && distanceFromCamera <= 100) {
+        setDragState(prev => ({
+          ...prev,
+          previewPosition: [newPosition.x, newPosition.y, newPosition.z]
+        }))
+      }
+    } else {
+      // Perpendicular plane movement (normal drag)
+      raycaster.setFromCamera(pointer, camera)
+      
+      // Intersect with the drag plane
+      if (raycaster.ray.intersectPlane(planeRef.current, intersectionPointRef.current)) {
+        // Apply the offset to maintain relative position to cursor
+        const newPosition = intersectionPointRef.current.clone().add(dragOffsetRef.current)
+        
+        // Reduced movement speed (1/3 of normal)
+        const dampedPosition = dragState.startPoint!.clone().lerp(newPosition, 0.33)
+        
+        setDragState(prev => ({
+          ...prev,
+          previewPosition: [dampedPosition.x, dampedPosition.y, dampedPosition.z]
+        }))
+      }
+    }
+  })
+  
+  return null
+}
+
 export default function Scene3D() {
   const entries = useEntries()
   const connections = useConnections()
-  const { selectEntry, addEntry } = useEntryActions()
+  const { selectEntry, addEntry, moveEntry } = useEntryActions()
   const selectedEntryId = useSelectedEntryId()
   const connectionFeedback = useConnectionFeedback()
   const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
+  const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
   
-  // Handle keyboard shortcuts for undo/redo
+  // Drag state
+  const [dragState, setDragState] = useState<{
+    isDragging: boolean
+    entryId: string | null
+    isShiftDrag: boolean
+    originalPosition: Position3D | null
+    previewPosition: Position3D | null
+    startPoint: Vector3 | null
+  }>({
+    isDragging: false,
+    entryId: null,
+    isShiftDrag: false,
+    originalPosition: null,
+    previewPosition: null,
+    startPoint: null
+  })
+  
+  // Drag handlers
+  const handleDragStart = (entryId: string, isShiftKey: boolean) => {
+    const entry = entries.find(e => e.id === entryId)
+    if (!entry) return
+    
+    setDragState({
+      isDragging: true,
+      entryId,
+      isShiftDrag: isShiftKey,
+      originalPosition: [...entry.position],
+      previewPosition: [...entry.position],
+      startPoint: new Vector3(...entry.position)
+    })
+    
+    // Disable orbit controls during drag
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = false
+    }
+  }
+  
+  const handleDragEnd = useCallback(() => {
+    // Commit the move if we have a preview position
+    if (dragState.isDragging && dragState.entryId && dragState.previewPosition) {
+      moveEntry(dragState.entryId, dragState.previewPosition)
+    }
+    
+    setDragState({
+      isDragging: false,
+      entryId: null,
+      isShiftDrag: false,
+      originalPosition: null,
+      previewPosition: null,
+      startPoint: null
+    })
+    
+    // Re-enable orbit controls
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = true
+    }
+  }, [dragState, moveEntry])
+
+  // Handle keyboard shortcuts for undo/redo and ESC cancellation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for ESC key during drag
+      if (e.key === 'Escape' && dragState.isDragging) {
+        e.preventDefault()
+        
+        // Cancel drag without committing the move
+        setDragState({
+          isDragging: false,
+          entryId: null,
+          isShiftDrag: false,
+          originalPosition: null,
+          previewPosition: null,
+          startPoint: null
+        })
+        
+        // Re-enable orbit controls
+        if (orbitControlsRef.current) {
+          orbitControlsRef.current.enabled = true
+        }
+      }
       // Check for Ctrl/Cmd + Z (undo)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         undoConnection()
       }
@@ -351,7 +673,7 @@ export default function Scene3D() {
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undoConnection, redoConnection])
+  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd])
   
   const handleAddEntry = () => {
     if (!cameraRef.current) {
@@ -396,8 +718,15 @@ export default function Scene3D() {
     addEntry(newPosition)
   }
   
+  // Determine cursor style based on drag state
+  const getCursorStyle = () => {
+    if (!dragState.isDragging) return 'auto'
+    if (dragState.isShiftDrag) return 'ns-resize'
+    return 'move'
+  }
+  
   return (
-    <div className="w-full bg-gray-900" style={{ height: '550px' }}>
+    <div className="w-full bg-gray-900" style={{ height: '550px', cursor: getCursorStyle() }}>
       <Canvas 
         onPointerMissed={() => {
           // Only deselect when clicking on empty space
@@ -410,10 +739,19 @@ export default function Scene3D() {
         <fog attach="fog" args={['#1a1a2e', 10, 50]} />
         
         <PerspectiveCamera makeDefault position={[5, 5, 5]} />
-        <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
+        <OrbitControls 
+          ref={orbitControlsRef}
+          enablePan={true} 
+          enableZoom={true} 
+          enableRotate={true} 
+        />
         <CameraController 
           cameraRef={cameraRef} 
           onCameraMove={clearConnectionFeedback}
+        />
+        <DragController
+          dragState={dragState}
+          setDragState={setDragState}
         />
         
         <ambientLight intensity={0.3} />
@@ -423,8 +761,41 @@ export default function Scene3D() {
         
         {/* Render all entries */}
         {entries.map(entry => (
-          <Entry key={entry.id} entry={entry} />
+          <Entry 
+            key={entry.id} 
+            entry={entry}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            isDragging={dragState.isDragging && dragState.entryId === entry.id}
+          />
         ))}
+        
+        {/* Render ghost entries during drag */}
+        {dragState.isDragging && dragState.entryId && dragState.originalPosition && dragState.previewPosition && (() => {
+          const draggedEntry = entries.find(e => e.id === dragState.entryId)
+          if (!draggedEntry) return null
+          
+          return (
+            <>
+              {/* Original position ghost at 75% opacity */}
+              <GhostEntry
+                position={dragState.originalPosition}
+                opacity={0.75}
+                color={SELECTED_ENTRY_COLOR}
+                summary={draggedEntry.summary}
+                hideBackText={true}
+              />
+              {/* New position ghost at 25% opacity */}
+              <GhostEntry
+                position={dragState.previewPosition}
+                opacity={0.25}
+                color={SELECTED_ENTRY_COLOR}
+                summary={draggedEntry.summary}
+                hideBackText={true}
+              />
+            </>
+          )
+        })()}
         
         {/* Render all connections */}
         {connections.map(connection => {
