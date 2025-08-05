@@ -93,11 +93,6 @@
 - Implement ESC key for canceling movement
 - Add other helpful shortcuts (Delete key, etc.)
 
-### 6.3 Touch Device Support
-- Ensure touch gestures work for camera controls
-- Implement touch-friendly entry selection
-- Add pinch-to-zoom support
-
 ## Phase 7: Performance & Testing
 ### 7.1 Performance Optimization
 - Implement frustum culling for entries

@@ -10,11 +10,13 @@ export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
 
-// Database types
+// Database types matching our new schema
 export interface DbMindMap {
   id: string
   user_id?: string
-  name: string
+  title: string
+  description?: string
+  is_deleted: boolean
   created_at: string
   updated_at: string
 }
@@ -22,10 +24,13 @@ export interface DbMindMap {
 export interface DbEntry {
   id: string
   mindmap_id: string
-  position: [number, number, number]
+  position_x: number
+  position_y: number
+  position_z: number
   summary: string
   content: string
-  color?: string
+  color: string
+  is_deleted: boolean
   created_at: string
   updated_at: string
 }
@@ -33,8 +38,9 @@ export interface DbEntry {
 export interface DbConnection {
   id: string
   mindmap_id: string
-  source_id: string
-  target_id: string
+  from_entry_id: string
+  to_entry_id: string
+  is_deleted: boolean
   created_at: string
 }
 
@@ -51,37 +57,46 @@ export const mindMapService = {
     }
 
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      
       // Save or update mind map
       const { error: mapError } = await supabase
         .from('mindmaps')
         .upsert({
           id: mindMap.id,
-          name: mindMap.name,
+          user_id: user?.id || null,
+          title: mindMap.name,
+          description: '',
+          is_deleted: false,
           updated_at: new Date().toISOString()
         })
 
       if (mapError) throw mapError
 
-      // Delete existing entries and connections for this mindmap
-      await supabase.from('entries').delete().eq('mindmap_id', mindMap.id)
-      await supabase.from('connections').delete().eq('mindmap_id', mindMap.id)
+      // Soft delete existing entries and connections for this mindmap
+      await supabase.from('entries').update({ is_deleted: true }).eq('mindmap_id', mindMap.id)
+      await supabase.from('connections').update({ is_deleted: true }).eq('mindmap_id', mindMap.id)
 
       // Insert entries
       if (mindMap.entries.length > 0) {
         const dbEntries: DbEntry[] = mindMap.entries.map(entry => ({
           id: entry.id,
           mindmap_id: mindMap.id,
-          position: entry.position,
+          position_x: entry.position[0],
+          position_y: entry.position[1],
+          position_z: entry.position[2],
           summary: entry.summary,
           content: entry.content,
-          color: entry.color,
+          color: entry.color || '#4CAF50',
+          is_deleted: false,
           created_at: entry.createdAt.toISOString(),
           updated_at: entry.updatedAt.toISOString()
         }))
 
         const { error: entriesError } = await supabase
           .from('entries')
-          .insert(dbEntries)
+          .upsert(dbEntries)
 
         if (entriesError) throw entriesError
       }
@@ -91,14 +106,15 @@ export const mindMapService = {
         const dbConnections: DbConnection[] = mindMap.connections.map(conn => ({
           id: conn.id,
           mindmap_id: mindMap.id,
-          source_id: conn.sourceId,
-          target_id: conn.targetId,
+          from_entry_id: conn.sourceId,
+          to_entry_id: conn.targetId,
+          is_deleted: false,
           created_at: conn.createdAt.toISOString()
         }))
 
         const { error: connectionsError } = await supabase
           .from('connections')
-          .insert(dbConnections)
+          .upsert(dbConnections)
 
         if (connectionsError) throw connectionsError
       }
@@ -123,6 +139,7 @@ export const mindMapService = {
         .from('mindmaps')
         .select('*')
         .eq('id', id)
+        .eq('is_deleted', false)
         .single()
 
       if (mapError) throw mapError
@@ -133,6 +150,7 @@ export const mindMapService = {
         .from('entries')
         .select('*')
         .eq('mindmap_id', id)
+        .eq('is_deleted', false)
 
       if (entriesError) throw entriesError
 
@@ -141,16 +159,17 @@ export const mindMapService = {
         .from('connections')
         .select('*')
         .eq('mindmap_id', id)
+        .eq('is_deleted', false)
 
       if (connectionsError) throw connectionsError
 
       // Convert to MindMap type
       const mindMap: MindMap = {
         id: mapData.id,
-        name: mapData.name,
+        name: mapData.title,
         entries: (entriesData || []).map(e => ({
           id: e.id,
-          position: e.position,
+          position: [e.position_x, e.position_y, e.position_z] as [number, number, number],
           summary: e.summary,
           content: e.content,
           color: e.color,
@@ -159,8 +178,8 @@ export const mindMapService = {
         })),
         connections: (connectionsData || []).map(c => ({
           id: c.id,
-          sourceId: c.source_id,
-          targetId: c.target_id,
+          sourceId: c.from_entry_id,
+          targetId: c.to_entry_id,
           createdAt: new Date(c.created_at)
         })),
         createdAt: new Date(mapData.created_at),
@@ -185,6 +204,7 @@ export const mindMapService = {
       const { data, error } = await supabase
         .from('mindmaps')
         .select('*')
+        .eq('is_deleted', false)
         .order('updated_at', { ascending: false })
 
       if (error) throw error
@@ -195,7 +215,7 @@ export const mindMapService = {
     }
   },
 
-  // Delete a mind map
+  // Delete a mind map (soft delete)
   async deleteMindMap(id: string): Promise<boolean> {
     if (!supabase) {
       console.log('Supabase not configured')
@@ -203,10 +223,10 @@ export const mindMapService = {
     }
 
     try {
-      // Cascade delete will handle entries and connections
+      // Soft delete - just mark as deleted
       const { error } = await supabase
         .from('mindmaps')
-        .delete()
+        .update({ is_deleted: true })
         .eq('id', id)
 
       if (error) throw error
@@ -214,6 +234,35 @@ export const mindMapService = {
     } catch (error) {
       console.error('Error deleting mind map:', error)
       return false
+    }
+  },
+
+  // Create a new mind map
+  async createMindMap(name: string): Promise<{ id: string } | null> {
+    if (!supabase) {
+      console.log('Supabase not configured')
+      return null
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      const { data, error } = await supabase
+        .from('mindmaps')
+        .insert({
+          user_id: user?.id || null,
+          title: name,
+          description: '',
+          is_deleted: false
+        })
+        .select('id')
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error creating mind map:', error)
+      return null
     }
   },
 
@@ -255,59 +304,96 @@ export const mindMapService = {
   }
 }
 
-// SQL schema for Supabase (run these in Supabase SQL editor)
-export const SUPABASE_SCHEMA = `
--- Create mindmaps table
-CREATE TABLE IF NOT EXISTS mindmaps (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+// Authentication helpers
+export const authService = {
+  // Sign up with email and password
+  async signUp(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured' }
+    }
 
--- Create entries table
-CREATE TABLE IF NOT EXISTS entries (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  mindmap_id UUID REFERENCES mindmaps(id) ON DELETE CASCADE,
-  position FLOAT[] NOT NULL,
-  summary TEXT NOT NULL,
-  content TEXT,
-  color TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
 
--- Create connections table
-CREATE TABLE IF NOT EXISTS connections (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  mindmap_id UUID REFERENCES mindmaps(id) ON DELETE CASCADE,
-  source_id UUID REFERENCES entries(id) ON DELETE CASCADE,
-  target_id UUID REFERENCES entries(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(mindmap_id, source_id, target_id)
-);
+      if (error) throw error
+      return { success: true }
+    } catch (error) {
+      console.error('Error signing up:', error)
+      return { success: false, error: String(error) }
+    }
+  },
 
--- Add RLS policies (adjust based on your auth strategy)
-ALTER TABLE mindmaps ENABLE ROW LEVEL SECURITY;
-ALTER TABLE entries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE connections ENABLE ROW LEVEL SECURITY;
+  // Sign in with email and password
+  async signIn(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured' }
+    }
 
--- Example policies (modify based on your needs)
-CREATE POLICY "Users can CRUD their own mindmaps" ON mindmaps
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-CREATE POLICY "Users can CRUD entries in their mindmaps" ON entries
-  FOR ALL USING (
-    mindmap_id IN (
-      SELECT id FROM mindmaps WHERE user_id = auth.uid() OR user_id IS NULL
-    )
-  );
+      if (error) throw error
+      return { success: true }
+    } catch (error) {
+      console.error('Error signing in:', error)
+      return { success: false, error: String(error) }
+    }
+  },
 
-CREATE POLICY "Users can CRUD connections in their mindmaps" ON connections
-  FOR ALL USING (
-    mindmap_id IN (
-      SELECT id FROM mindmaps WHERE user_id = auth.uid() OR user_id IS NULL
-    )
-  );
-`
+  // Sign out
+  async signOut(): Promise<{ success: boolean; error?: string }> {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured' }
+    }
+
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      return { success: true }
+    } catch (error) {
+      console.error('Error signing out:', error)
+      return { success: false, error: String(error) }
+    }
+  },
+
+  // Reset password
+  async resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured' }
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+
+      if (error) throw error
+      return { success: true }
+    } catch (error) {
+      console.error('Error resetting password:', error)
+      return { success: false, error: String(error) }
+    }
+  },
+
+  // Get current user
+  async getCurrentUser() {
+    if (!supabase) return null
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    return user
+  },
+
+  // Subscribe to auth state changes
+  onAuthStateChange(callback: (event: string, session: unknown) => void) {
+    if (!supabase) return null
+    
+    return supabase.auth.onAuthStateChange(callback)
+  }
+}
+

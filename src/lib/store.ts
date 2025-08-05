@@ -45,6 +45,7 @@ interface MindMapState {
   selectedEntryId: string | null
   hoveredEntryId: string | null
   mindMapId: string | null
+  currentMindMapId: string | null
   
   // Connection feedback
   connectionFeedback: {
@@ -73,8 +74,11 @@ interface MindMapState {
   // UI Overlay state - using object instead of Map for Immer compatibility
   overlays: Record<string, OverlayState>
   
+  // Connection status
+  connectionStatus: 'connected' | 'disconnected' | 'connecting'
+  
   // Entry actions
-  addEntry: (position?: Position3D) => Entry
+  addEntry: (positionOrEntry?: Position3D | Entry) => Entry
   updateEntry: (id: string, updates: Partial<Entry>) => void
   deleteEntry: (id: string) => void
   restoreDeletedEntry: (deletedEntry: DeletedEntry) => void
@@ -84,8 +88,9 @@ interface MindMapState {
   hoverEntry: (id: string | null) => void
   
   // Connection actions
-  addConnection: (sourceId: string, targetId: string) => Connection | null
+  addConnection: (sourceIdOrConnection: string | Connection, targetId?: string) => Connection | null
   removeConnection: (sourceId: string, targetId: string) => void
+  deleteConnection: (id: string) => void
   toggleConnection: (sourceId: string, targetId: string) => void
   getConnectionBetween: (id1: string, id2: string) => Connection | undefined
   removeConnectionsForEntry: (entryId: string) => void
@@ -122,6 +127,9 @@ interface MindMapState {
   clearAllOverlays: () => void
   updateOverlayData: (type: string, data: OverlayData) => void
   isOverlayVisible: (type: string) => boolean
+  
+  // Connection status actions
+  setConnectionStatus: (status: 'connected' | 'disconnected' | 'connecting') => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -139,6 +147,7 @@ export const useMindMapStore = create<MindMapState>()(
     selectedEntryId: null,
     hoveredEntryId: null,
     mindMapId: null,
+    currentMindMapId: null,
     connectionFeedback: null,
     connectionHistory: [],
     connectionHistoryIndex: -1,
@@ -151,26 +160,46 @@ export const useMindMapStore = create<MindMapState>()(
     movementMode: null,
     isCameraLocked: false,
     overlays: {},
+    connectionStatus: 'disconnected' as const,
     
     // Entry actions
-    addEntry: (position?: Position3D) => {
-      const newEntry: Entry = {
-        id: uuidv4(),
-        position: position || getRandomPosition(),
-        summary: 'New Entry',
-        content: '',
-        color: DEFAULT_ENTRY_COLOR,
-        createdAt: new Date(),
-        updatedAt: new Date()
+    addEntry: (positionOrEntry?: Position3D | Entry) => {
+      // Handle overloaded parameters
+      if (positionOrEntry && 'id' in positionOrEntry) {
+        // Called with Entry object (from real-time sync)
+        const entry = positionOrEntry
+        
+        // Check if entry already exists
+        const existing = get().entries.find(e => e.id === entry.id)
+        if (existing) return existing
+        
+        set((state) => {
+          state.entries.push(entry)
+        })
+        
+        return entry
+      } else {
+        // Called with position
+        const position = positionOrEntry as Position3D | undefined
+        
+        const newEntry: Entry = {
+          id: uuidv4(),
+          position: position || getRandomPosition(),
+          summary: 'New Entry',
+          content: '',
+          color: DEFAULT_ENTRY_COLOR,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+        
+        set((state) => {
+          state.entries.push(newEntry)
+          // Auto-select the newly created entry
+          state.selectedEntryId = newEntry.id
+        })
+        
+        return newEntry
       }
-      
-      set((state) => {
-        state.entries.push(newEntry)
-        // Auto-select the newly created entry
-        state.selectedEntryId = newEntry.id
-      })
-      
-      return newEntry
     },
     
     updateEntry: (id: string, updates: Partial<Entry>) => {
@@ -288,61 +317,82 @@ export const useMindMapStore = create<MindMapState>()(
     },
     
     // Connection actions
-    addConnection: (sourceId: string, targetId: string) => {
-      // Don't allow self-connections
-      if (sourceId === targetId) return null
-      
-      // Check if connection already exists
-      const existing = get().getConnectionBetween(sourceId, targetId)
-      if (existing) return null
-      
-      const newConnection: Connection = {
-        id: uuidv4(),
-        sourceId,
-        targetId,
-        createdAt: new Date()
-      }
-      
-      const operation: ConnectionOperation = {
-        id: uuidv4(),
-        type: 'add',
-        sourceId,
-        targetId,
-        connectionId: newConnection.id,
-        timestamp: new Date()
-      }
-      
-      set((state) => {
-        state.connections.push(newConnection)
+    addConnection: (sourceIdOrConnection: string | Connection, targetId?: string) => {
+      // Handle overloaded parameters
+      if (typeof sourceIdOrConnection === 'object') {
+        // Called with Connection object (from real-time sync)
+        const connection = sourceIdOrConnection
         
-        // Clear any redo history when new operation is performed
-        if (state.connectionHistoryIndex < state.connectionHistory.length - 1) {
-          state.connectionHistory = state.connectionHistory.slice(0, state.connectionHistoryIndex + 1)
+        // Check if connection already exists
+        const existing = get().connections.find(c => c.id === connection.id)
+        if (existing) return null
+        
+        set((state) => {
+          state.connections.push(connection)
+        })
+        
+        return connection
+      } else {
+        // Called with sourceId and targetId
+        const sourceId = sourceIdOrConnection
+        
+        if (!targetId) return null
+        
+        // Don't allow self-connections
+        if (sourceId === targetId) return null
+        
+        // Check if connection already exists
+        const existing = get().getConnectionBetween(sourceId, targetId)
+        if (existing) return null
+        
+        const newConnection: Connection = {
+          id: uuidv4(),
+          sourceId,
+          targetId,
+          createdAt: new Date()
         }
         
-        // Add to history
-        state.connectionHistory.push(operation)
-        state.connectionHistoryIndex = state.connectionHistory.length - 1
-        
-        // Show feedback using overlay system
-        state.connectionFeedback = {
-          message: 'Connection Added. Click to remove',
-          lastOperation: operation
+        const operation: ConnectionOperation = {
+          id: uuidv4(),
+          type: 'add',
+          sourceId,
+          targetId,
+          connectionId: newConnection.id,
+          timestamp: new Date()
         }
         
-        // Also show as overlay
-        state.overlays['connectionFeedback'] = {
-          visible: true,
-          data: {
+        set((state) => {
+          state.connections.push(newConnection)
+          
+          // Clear any redo history when new operation is performed
+          if (state.connectionHistoryIndex < state.connectionHistory.length - 1) {
+            state.connectionHistory = state.connectionHistory.slice(0, state.connectionHistoryIndex + 1)
+          }
+          
+          // Add to history
+          state.connectionHistory.push(operation)
+          state.connectionHistoryIndex = state.connectionHistory.length - 1
+          
+          // Show feedback using overlay system
+          state.connectionFeedback = {
             message: 'Connection Added. Click to remove',
             lastOperation: operation
-          },
-          autoDismiss: true,
-          dismissTimeout: 3000
-        }
-      })
-      
-      return newConnection
+          }
+          
+          // Also show as overlay
+          state.overlays['connectionFeedback'] = {
+            visible: true,
+            data: {
+              message: 'Connection Added. Click to remove',
+              lastOperation: operation
+            },
+            autoDismiss: true,
+            dismissTimeout: 3000
+          }
+        })
+        
+        return newConnection
+      }
     },
     
     removeConnection: (sourceId: string, targetId: string) => {
@@ -388,6 +438,12 @@ export const useMindMapStore = create<MindMapState>()(
           autoDismiss: true,
           dismissTimeout: 3000
         }
+      })
+    },
+    
+    deleteConnection: (id: string) => {
+      set((state) => {
+        state.connections = state.connections.filter(c => c.id !== id)
       })
     },
     
@@ -498,6 +554,7 @@ export const useMindMapStore = create<MindMapState>()(
         state.entries = data.entries
         state.connections = data.connections
         state.mindMapId = data.id
+        state.currentMindMapId = data.id
         state.selectedEntryId = null
         state.hoveredEntryId = null
       })
@@ -660,13 +717,33 @@ export const useMindMapStore = create<MindMapState>()(
     isOverlayVisible: (type: string) => {
       const overlay = get().overlays[type]
       return overlay?.visible || false
+    },
+    
+    // Connection status actions
+    setConnectionStatus: (status: 'connected' | 'disconnected' | 'connecting') => {
+      set((state) => {
+        state.connectionStatus = status
+      })
     }
   }))
 )
 
-// Initialize with sample data
-const initializeWithSampleData = () => {
+// Initialize with sample data (only for demo/development)
+export const initializeWithSampleData = () => {
   const store = useMindMapStore.getState()
+  
+  // Clear existing data
+  store.clearMindMap()
+  
+  // Set a demo mind map ID
+  store.loadMindMap({
+    id: 'demo-mindmap',
+    name: 'Demo Mind Map',
+    entries: [],
+    connections: [],
+    createdAt: new Date(),
+    updatedAt: new Date()
+  })
   
   // Create sample entries
   const entry1 = store.addEntry([-2, 0, 0])
@@ -683,7 +760,4 @@ const initializeWithSampleData = () => {
   store.addConnection(entry1.id, entry3.id)
 }
 
-// Initialize on module load
-if (typeof window !== 'undefined') {
-  initializeWithSampleData()
-}
+// Don't auto-initialize - let the app decide when to load demo data
