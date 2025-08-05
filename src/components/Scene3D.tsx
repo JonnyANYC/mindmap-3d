@@ -3,7 +3,7 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Text, Cylinder as DreiCylinder } from '@react-three/drei'
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
-import { Mesh, Vector3, Camera, OrbitControls as OrbitControlsImpl } from 'three'
+import { Mesh, Vector3, Camera } from 'three'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { 
@@ -74,7 +74,6 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
         anchorX="center"
         anchorY="middle"
         maxWidth={0.9}
-        // @ts-expect-error - material props
         material-opacity={opacity}
         material-transparent
       >
@@ -89,7 +88,6 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
         anchorY="middle"
         maxWidth={0.9}
         rotation={[0, Math.PI, 0]}
-        // @ts-expect-error - material props
         material-opacity={opacity}
         material-transparent
       >
@@ -105,6 +103,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   const hoveredEntryId = useHoveredEntryId()
   const { selectEntry, hoverEntry, toggleConnection } = useEntryActions()
   const { clearConnectionFeedback } = useConnectionActions()
+  const openEditor = useMindMapStore((state) => state.openEditor)
   
   const isSelected = selectedEntryId === entry.id
   const isHovered = hoveredEntryId === entry.id
@@ -262,8 +261,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
             anchorY="middle"
             onClick={(e) => {
               e.stopPropagation()
-              console.log('Edit button clicked for entry:', entry.id)
-              // TODO: Open editor dialog
+              openEditor(entry.id)
             }}
           >
             [Edit]
@@ -277,8 +275,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
             rotation={[0, Math.PI, 0]}
             onClick={(e) => {
               e.stopPropagation()
-              console.log('Edit button clicked for entry:', entry.id)
-              // TODO: Open editor dialog
+              openEditor(entry.id)
             }}
           >
             [Edit]
@@ -579,7 +576,7 @@ export default function Scene3D() {
   const connectionFeedback = useConnectionFeedback()
   const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
-  const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
+  const orbitControlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null)
   const { toast } = useToast()
   
   // Drag state

@@ -39,6 +39,10 @@ interface MindMapState {
   // Deleted entries for undo
   deletedEntries: DeletedEntry[]
   
+  // Editor state
+  isEditorOpen: boolean
+  editingEntryId: string | null
+  
   // Entry actions
   addEntry: (position?: Position3D) => Entry
   updateEntry: (id: string, updates: Partial<Entry>) => void
@@ -71,6 +75,10 @@ interface MindMapState {
   getSelectedEntry: () => Entry | undefined
   getHoveredEntry: () => Entry | undefined
   getMindMapData: () => MindMap
+  
+  // Editor actions
+  openEditor: (entryId: string) => void
+  closeEditor: () => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -92,6 +100,8 @@ export const useMindMapStore = create<MindMapState>()(
     connectionHistory: [],
     connectionHistoryIndex: -1,
     deletedEntries: [],
+    isEditorOpen: false,
+    editingEntryId: null,
     
     // Entry actions
     addEntry: (position?: Position3D) => {
@@ -454,6 +464,21 @@ export const useMindMapStore = create<MindMapState>()(
         createdAt: new Date(),
         updatedAt: new Date()
       }
+    },
+    
+    // Editor actions
+    openEditor: (entryId: string) => {
+      set((state) => {
+        state.isEditorOpen = true
+        state.editingEntryId = entryId
+      })
+    },
+    
+    closeEditor: () => {
+      set((state) => {
+        state.isEditorOpen = false
+        state.editingEntryId = null
+      })
     }
   }))
 )
