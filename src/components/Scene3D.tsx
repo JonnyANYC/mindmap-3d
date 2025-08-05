@@ -64,21 +64,49 @@ function Entry({ entry }: EntryProps) {
       >
         {entry.summary}
       </Text>
+      <Text
+        position={[0, 0, -0.026]}
+        fontSize={0.15}
+        color="white"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={0.9}
+        rotation={[0, Math.PI, 0]}
+      >
+        {entry.summary}
+      </Text>
       {isSelected && (
-        <Text
-          position={[0, -0.35, 0.026]}
-          fontSize={0.08}
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-          onClick={(e) => {
-            e.stopPropagation()
-            console.log('Edit button clicked for entry:', entry.id)
-            // TODO: Open editor dialog
-          }}
-        >
-          [Edit]
-        </Text>
+        <>
+          <Text
+            position={[0, -0.35, 0.026]}
+            fontSize={0.08}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+            onClick={(e) => {
+              e.stopPropagation()
+              console.log('Edit button clicked for entry:', entry.id)
+              // TODO: Open editor dialog
+            }}
+          >
+            [Edit]
+          </Text>
+          <Text
+            position={[0, -0.35, -0.026]}
+            fontSize={0.08}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+            rotation={[0, Math.PI, 0]}
+            onClick={(e) => {
+              e.stopPropagation()
+              console.log('Edit button clicked for entry:', entry.id)
+              // TODO: Open editor dialog
+            }}
+          >
+            [Edit]
+          </Text>
+        </>
       )}
     </group>
   )
