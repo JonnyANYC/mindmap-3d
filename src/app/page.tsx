@@ -6,10 +6,13 @@ import { MindMapSelector } from '@/components/MindMapSelector'
 import { SaveIndicator } from '@/components/SaveIndicator'
 import { useRealtimeSync } from '@/hooks/useRealtimeSync'
 import { useMindMapStore } from '@/lib/store'
+import { useStorage } from '@/components/StorageProvider'
+import { ExportButton } from '@/components/ExportButton'
 
 export default function Home() {
   const mindMapId = useMindMapStore(state => state.mindMapId)
   const entries = useMindMapStore(state => state.entries)
+  const { status, isLoading } = useStorage()
   
   // Enable real-time sync when a mind map is loaded
   useRealtimeSync(mindMapId)
@@ -27,6 +30,7 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-4">
+            <ExportButton />
             <SaveIndicator />
             <UserMenu />
           </div>
@@ -45,10 +49,22 @@ export default function Home() {
                 Welcome to 3D Mind Map
               </h2>
               <p className="text-neutral-600 dark:text-neutral-400 mb-6 max-w-md">
-                You&apos;re in offline mode. Click &ldquo;Add Entry&rdquo; below to start creating your mind map.
+                {isLoading ? (
+                  <>Checking storage availability...</>
+                ) : status?.mode === 'supabase' ? (
+                  <>Click &ldquo;New Mind Map&rdquo; or &ldquo;Open Mind Map&rdquo; above to get started.</>
+                ) : (
+                  <>Click &ldquo;Add Entry&rdquo; below to start creating your mind map.</>
+                )}
               </p>
               <div className="text-sm text-neutral-500 dark:text-neutral-500">
-                Your work will be stored locally in your browser session.
+                {!isLoading && status && (
+                  <>
+                    {status.mode === 'supabase' && 'Your mind maps are saved to the cloud.'}
+                    {status.mode === 'localStorage' && 'Your mind maps are saved locally in this browser.'}
+                    {status.mode === 'session' && status.message}
+                  </>
+                )}
               </div>
             </div>
           </div>

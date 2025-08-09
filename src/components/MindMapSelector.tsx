@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
+import { useStorage } from '@/components/StorageProvider'
+import { storageService } from '@/lib/storage/storageService'
 import {
   Dialog,
   DialogContent,
@@ -24,28 +26,30 @@ export function MindMapSelector() {
   const [newMapName, setNewMapName] = useState('')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const { toast } = useToast()
+  const { status } = useStorage()
   
   const currentMindMapId = useMindMapStore(state => state.mindMapId)
   const clearMindMap = useMindMapStore(state => state.clearMindMap)
 
   // Load mind maps list
-  const loadMindMaps = async () => {
-    const { mindMapService } = await import('@/lib/supabase')
-    if (!mindMapService.isConfigured()) {
-      // In offline mode, we can't list saved maps
+  useEffect(() => {
+    const loadMindMaps = async () => {
+      if (!status?.isAvailable || !storageService.isPersistentStorage()) {
+        // In session mode, we can't list saved maps
+        setLoading(false)
+        return
+      }
+      
+      setLoading(true)
+      const maps = await mindMapSaveService.list()
+      setMindMaps(maps)
       setLoading(false)
-      return
     }
     
-    setLoading(true)
-    const maps = await mindMapSaveService.list()
-    setMindMaps(maps)
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    loadMindMaps()
-  }, [])
+    if (status) {
+      loadMindMaps()
+    }
+  }, [status])
 
   const handleLoadMindMap = async (id: string) => {
     const result = await mindMapSaveService.load(id)
@@ -74,14 +78,13 @@ export function MindMapSelector() {
       return
     }
 
-    // Check if Supabase is configured
-    const { mindMapService } = await import('@/lib/supabase')
-    if (!mindMapService.isConfigured()) {
-      // Create local-only mind map
+    // Handle different storage modes
+    if (!storageService.isPersistentStorage()) {
+      // Create session-only mind map
       const store = useMindMapStore.getState()
       store.clearMindMap()
       store.loadMindMap({
-        id: `local-${Date.now()}`,
+        id: `session-${Date.now()}`,
         name: newMapName,
         entries: [],
         connections: [],
@@ -91,7 +94,7 @@ export function MindMapSelector() {
       
       toast({
         title: 'Mind map created',
-        description: 'Working in offline mode - changes will not be saved to cloud',
+        description: status?.message || 'Working in session mode',
       })
       setNewMapName('')
       setIsCreateDialogOpen(false)
@@ -107,7 +110,14 @@ export function MindMapSelector() {
       })
       setNewMapName('')
       setIsCreateDialogOpen(false)
-      loadMindMaps()
+      // Reload mind maps
+      const loadMaps = async () => {
+        if (status?.isAvailable && storageService.isPersistentStorage()) {
+          const maps = await mindMapSaveService.list()
+          setMindMaps(maps)
+        }
+      }
+      loadMaps()
     } else {
       toast({
         title: 'Error creating mind map',
@@ -127,7 +137,14 @@ export function MindMapSelector() {
         title: 'Mind map deleted',
         description: 'The mind map has been deleted',
       })
-      loadMindMaps()
+      // Reload mind maps
+      const loadMaps = async () => {
+        if (status?.isAvailable && storageService.isPersistentStorage()) {
+          const maps = await mindMapSaveService.list()
+          setMindMaps(maps)
+        }
+      }
+      loadMaps()
     } else {
       toast({
         title: 'Error deleting mind map',
@@ -189,6 +206,10 @@ export function MindMapSelector() {
           <div className="max-h-96 overflow-y-auto">
             {loading ? (
               <div className="text-center py-4">Loading...</div>
+            ) : !storageService.isPersistentStorage() ? (
+              <div className="text-center py-4 text-neutral-500">
+                Mind map list not available in session storage mode.
+              </div>
             ) : mindMaps.length === 0 ? (
               <div className="text-center py-4 text-neutral-500">
                 No mind maps found. Create your first one!

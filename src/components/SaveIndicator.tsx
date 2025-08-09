@@ -6,6 +6,7 @@ import { useAutoSave } from '@/hooks/useAutoSave'
 import { mindMapSaveService } from '@/lib/mindMapService'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import { storageService } from '@/lib/storage/storageService'
 
 export function SaveIndicator() {
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
@@ -84,7 +85,7 @@ export function SaveIndicator() {
     return date.toLocaleDateString()
   }
   
-  if (!mindMapId) {
+  if (!mindMapId || !storageService.isPersistentStorage()) {
     return null
   }
   

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { authService, supabase } from '@/lib/supabase'
+import { authService } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { User } from '@supabase/supabase-js'
+import { storageService } from '@/lib/storage/storageService'
 
 export function UserMenu() {
   const [user, setUser] = useState<User | null>(null)
@@ -14,8 +15,8 @@ export function UserMenu() {
   const { toast } = useToast()
 
   useEffect(() => {
-    // Check if Supabase is configured
-    if (!supabase) {
+    // Check if using cloud storage
+    if (!storageService.isCloudStorage()) {
       setLoading(false)
       return
     }
@@ -65,8 +66,8 @@ export function UserMenu() {
   }
 
   if (!user) {
-    // If Supabase is not configured, don't show sign in button
-    if (!supabase) {
+    // If not using cloud storage, don't show sign in button
+    if (!storageService.isCloudStorage()) {
       return null
     }
     

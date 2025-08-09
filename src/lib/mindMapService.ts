@@ -1,5 +1,5 @@
-import { mindMapService } from './supabase'
 import { useMindMapStore } from './store'
+import { storageService } from './storage/storageService'
 
 // Auto-save functionality
 let autoSaveTimer: NodeJS.Timeout | null = null
@@ -11,13 +11,15 @@ export const mindMapSaveService = {
     const store = useMindMapStore.getState()
     const mindMapData = store.getMindMapData()
     
-    return mindMapService.saveMindMap(mindMapData)
+    const adapter = storageService.getAdapter()
+    return adapter.saveMindMap(mindMapData)
   },
 
   // Load a mind map by ID
   async load(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const mindMap = await mindMapService.loadMindMap(id)
+      const adapter = storageService.getAdapter()
+      const mindMap = await adapter.loadMindMap(id)
       
       if (!mindMap) {
         return { success: false, error: 'Mind map not found' }
@@ -35,7 +37,8 @@ export const mindMapSaveService = {
 
   // Create a new mind map
   async createNew(name: string): Promise<{ id: string | null; error?: string }> {
-    const result = await mindMapService.createMindMap(name)
+    const adapter = storageService.getAdapter()
+    const result = await adapter.createMindMap(name)
     
     if (result) {
       // Clear current state and set new ID
@@ -58,12 +61,14 @@ export const mindMapSaveService = {
 
   // List all mind maps
   async list() {
-    return mindMapService.listMindMaps()
+    const adapter = storageService.getAdapter()
+    return adapter.listMindMaps()
   },
 
   // Delete a mind map
   async delete(id: string): Promise<{ success: boolean; error?: string }> {
-    const success = await mindMapService.deleteMindMap(id)
+    const adapter = storageService.getAdapter()
+    const success = await adapter.deleteMindMap(id)
     
     if (!success) {
       return { success: false, error: 'Failed to delete mind map' }

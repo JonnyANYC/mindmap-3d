@@ -1,7 +1,6 @@
 import { useInputCapabilities } from '@/lib/input-detection'
 import { useIsHelpOverlayCollapsed, useHelpOverlayActions } from '@/hooks/useMindMapStore'
 import { ChevronUp, ChevronDown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export function HelpOverlay() {

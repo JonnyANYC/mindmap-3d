@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { useMindMapStore } from '@/lib/store'
-import { mindMapService, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { Entry, Connection } from '@/types/mindmap'
+import { storageService } from '@/lib/storage/storageService'
 
 export function useRealtimeSync(mindMapId: string | null) {
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -111,15 +112,16 @@ export function useRealtimeSync(mindMapId: string | null) {
   }, [mindMapId])
 
   useEffect(() => {
-    if (!mindMapId || !mindMapService.isConfigured()) {
+    if (!mindMapId || !storageService.isCloudStorage()) {
       return
     }
 
     // Set up real-time subscription
-    const subscription = mindMapService.subscribeToChanges(mindMapId, handleRealtimeUpdate)
+    const adapter = storageService.getAdapter()
+    const subscription = adapter.subscribeToChanges?.(mindMapId, handleRealtimeUpdate)
     
     if (subscription) {
-      channelRef.current = subscription
+      channelRef.current = subscription as RealtimeChannel
     }
 
     // Capture the ref value for cleanup
