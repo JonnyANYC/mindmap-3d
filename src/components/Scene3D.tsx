@@ -22,6 +22,7 @@ import { Plus } from 'lucide-react'
 import { ConnectionFeedback } from '@/components/ConnectionFeedback'
 import { useToast } from '@/hooks/use-toast'
 import { useMindMapStore } from '@/lib/store'
+import { ExtendedHelpModal } from '@/components/ExtendedHelpModal'
 
 interface EntryProps {
   entry: EntryType
@@ -577,7 +578,9 @@ export default function Scene3D() {
   const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
   const orbitControlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
+  const [showExtendedHelp, setShowExtendedHelp] = useState(false)
   
   // Drag state
   const [dragState, setDragState] = useState<{
@@ -637,9 +640,64 @@ export default function Scene3D() {
     }
   }, [dragState, moveEntry])
 
+  // Focus the container on mount to ensure keyboard events work
+  useEffect(() => {
+    containerRef.current?.focus()
+  }, [])
+
+  const handleAddEntry = useCallback(() => {
+    if (!cameraRef.current) {
+      // Fallback to random position if camera not ready
+      addEntry()
+      return
+    }
+    
+    const camera = cameraRef.current
+    const selectedEntry = entries.find(e => e.id === selectedEntryId)
+    
+    let newPosition: [number, number, number]
+    
+    if (selectedEntry) {
+      // Calculate distance between camera and selected entry
+      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
+      const entryPos = new Vector3(...selectedEntry.position)
+      const distance = cameraPos.distanceTo(entryPos)
+      
+      if (distance > 3) {
+        // Place halfway between camera and selected entry
+        const midpoint = new Vector3()
+          .addVectors(cameraPos, entryPos)
+          .multiplyScalar(0.5)
+        newPosition = [midpoint.x, midpoint.y, midpoint.z]
+      } else {
+        // Place 3 units in front of camera
+        const direction = new Vector3(0, 0, -1)
+        direction.applyQuaternion(camera.quaternion)
+        const position = cameraPos.clone().add(direction.multiplyScalar(3))
+        newPosition = [position.x, position.y, position.z]
+      }
+    } else {
+      // No selection - place 3 units in front of camera
+      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
+      const direction = new Vector3(0, 0, -1)
+      direction.applyQuaternion(camera.quaternion)
+      const position = cameraPos.clone().add(direction.multiplyScalar(3))
+      newPosition = [position.x, position.y, position.z]
+    }
+    
+    addEntry(newPosition)
+  }, [addEntry, entries, selectedEntryId])
+
   // Handle keyboard shortcuts for undo/redo, ESC cancellation, and Delete
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when editor is open
+      const isEditorOpen = useMindMapStore.getState().isEditorOpen
+      if (isEditorOpen && e.key !== 'Escape') return
+      
+      // Don't handle shortcuts when extended help modal is open (except ESC and ?)
+      if (showExtendedHelp && e.key !== 'Escape' && e.key !== '?' && !(e.key === '/' && e.shiftKey)) return
+      
       // Check for ESC key during drag
       if (e.key === 'Escape' && dragState.isDragging) {
         e.preventDefault()
@@ -708,54 +766,132 @@ export default function Scene3D() {
         e.preventDefault()
         redoConnection()
       }
+      // Check for Ctrl/Cmd + A (add new entry)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault()
+        handleAddEntry()
+      }
+      // Check for Ctrl/Cmd + E (edit selected entry)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'e' && selectedEntryId) {
+        e.preventDefault()
+        useMindMapStore.getState().openEditor(selectedEntryId)
+      }
+      // Check for Ctrl/Cmd + D (duplicate selected entry)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedEntryId) {
+        e.preventDefault()
+        const entryToDuplicate = entries.find(e => e.id === selectedEntryId)
+        if (entryToDuplicate) {
+          // Create a new entry with the same content but offset position
+          const offset = 1.5
+          const newPosition: Position3D = [
+            entryToDuplicate.position[0] + offset,
+            entryToDuplicate.position[1],
+            entryToDuplicate.position[2] + offset
+          ]
+          const newEntry = addEntry(newPosition)
+          useMindMapStore.getState().updateEntry(newEntry.id, {
+            summary: entryToDuplicate.summary,
+            content: entryToDuplicate.content,
+            color: entryToDuplicate.color
+          })
+          
+          toast({
+            title: "Entry duplicated",
+            description: `"${entryToDuplicate.summary}" has been duplicated.`,
+          })
+        }
+      }
+      // Check for Space key (reset camera)
+      else if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault()
+        if (orbitControlsRef.current) {
+          // Reset camera to default position
+          orbitControlsRef.current.reset()
+          toast({
+            title: "Camera reset",
+            description: "Camera position has been reset to default.",
+            duration: 2000,
+          })
+        }
+      }
+      // Check for F key (focus on selected entry)
+      else if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.shiftKey && selectedEntryId) {
+        e.preventDefault()
+        const selectedEntry = entries.find(e => e.id === selectedEntryId)
+        if (selectedEntry && orbitControlsRef.current) {
+          // Animate camera to focus on selected entry
+          const targetPosition = new Vector3(...selectedEntry.position)
+          orbitControlsRef.current.target.copy(targetPosition)
+          orbitControlsRef.current.update()
+          
+          // Move camera to a good viewing position relative to the entry
+          // Distance reduced by 1/3 (from 5 to 3.33) for closer view
+          const distance = 3.33
+          const cameraPosition = targetPosition.clone().add(new Vector3(distance, distance, distance))
+          cameraRef.current?.position.copy(cameraPosition)
+          cameraRef.current?.lookAt(targetPosition)
+          
+          toast({
+            title: "Focused on entry",
+            description: `Camera focused on "${selectedEntry.summary}".`,
+            duration: 2000,
+          })
+        }
+      }
+      // Check for Arrow keys (fine-tune position of selected entry)
+      else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedEntryId && !dragState.isDragging) {
+        e.preventDefault()
+        const selectedEntry = entries.find(e => e.id === selectedEntryId)
+        if (selectedEntry) {
+          const moveDistance = 0.1
+          const newPosition: Position3D = [...selectedEntry.position]
+          
+          // Get camera direction for relative movement
+          const cameraDirection = new Vector3()
+          cameraRef.current?.getWorldDirection(cameraDirection)
+          cameraDirection.y = 0 // Project onto horizontal plane
+          cameraDirection.normalize()
+          
+          // Calculate right vector (perpendicular to camera direction)
+          const rightVector = new Vector3()
+          rightVector.crossVectors(cameraDirection, new Vector3(0, 1, 0)).normalize()
+          
+          switch (e.key) {
+            case 'ArrowUp':
+              // Move forward relative to camera
+              newPosition[0] += cameraDirection.x * moveDistance
+              newPosition[2] += cameraDirection.z * moveDistance
+              break
+            case 'ArrowDown':
+              // Move backward relative to camera
+              newPosition[0] -= cameraDirection.x * moveDistance
+              newPosition[2] -= cameraDirection.z * moveDistance
+              break
+            case 'ArrowLeft':
+              // Move left relative to camera
+              newPosition[0] -= rightVector.x * moveDistance
+              newPosition[2] -= rightVector.z * moveDistance
+              break
+            case 'ArrowRight':
+              // Move right relative to camera
+              newPosition[0] += rightVector.x * moveDistance
+              newPosition[2] += rightVector.z * moveDistance
+              break
+          }
+          
+          moveEntry(selectedEntryId, newPosition)
+        }
+      }
+      // Check for ? key (toggle extended help modal)
+      else if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+        e.preventDefault()
+        setShowExtendedHelp(prev => !prev)
+      }
     }
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast])
-  
-  const handleAddEntry = () => {
-    if (!cameraRef.current) {
-      // Fallback to random position if camera not ready
-      addEntry()
-      return
-    }
-    
-    const camera = cameraRef.current
-    const selectedEntry = entries.find(e => e.id === selectedEntryId)
-    
-    let newPosition: [number, number, number]
-    
-    if (selectedEntry) {
-      // Calculate distance between camera and selected entry
-      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
-      const entryPos = new Vector3(...selectedEntry.position)
-      const distance = cameraPos.distanceTo(entryPos)
-      
-      if (distance > 3) {
-        // Place halfway between camera and selected entry
-        const midpoint = new Vector3()
-          .addVectors(cameraPos, entryPos)
-          .multiplyScalar(0.5)
-        newPosition = [midpoint.x, midpoint.y, midpoint.z]
-      } else {
-        // Place 3 units in front of camera
-        const direction = new Vector3(0, 0, -1)
-        direction.applyQuaternion(camera.quaternion)
-        const position = cameraPos.clone().add(direction.multiplyScalar(3))
-        newPosition = [position.x, position.y, position.z]
-      }
-    } else {
-      // No selection - place 3 units in front of camera
-      const cameraPos = new Vector3(camera.position.x, camera.position.y, camera.position.z)
-      const direction = new Vector3(0, 0, -1)
-      direction.applyQuaternion(camera.quaternion)
-      const position = cameraPos.clone().add(direction.multiplyScalar(3))
-      newPosition = [position.x, position.y, position.z]
-    }
-    
-    addEntry(newPosition)
-  }
+  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast, handleAddEntry, addEntry, setShowExtendedHelp, showExtendedHelp])
   
   // Determine cursor style based on drag state
   const getCursorStyle = () => {
@@ -765,7 +901,7 @@ export default function Scene3D() {
   }
   
   return (
-    <div className="w-full h-full bg-gray-900" style={{ cursor: getCursorStyle() }}>
+    <div ref={containerRef} className="w-full h-full bg-gray-900 relative" style={{ cursor: getCursorStyle() }} tabIndex={0}>
       <Canvas 
         onPointerMissed={() => {
           // Only deselect when clicking on empty space
@@ -875,6 +1011,7 @@ export default function Scene3D() {
             <li>🖱️ Left click + drag: Orbit camera</li>
             <li>🖱️ Right click + drag: Pan camera</li>
             <li>🖱️ Scroll wheel: Zoom in/out</li>
+            <li>⌨️ Space: Reset camera position</li>
             <li>📱 One finger drag: Orbit (touch)</li>
             <li>📱 Two finger drag: Pan (touch)</li>
             <li>📱 Pinch: Zoom (touch)</li>
@@ -890,17 +1027,26 @@ export default function Scene3D() {
             <li>🔄 Drag selected: Move (horizontal)</li>
             <li>⬆️ Shift + drag: Move depth (in/out)</li>
             <li>🗑️ Delete key: Delete selected</li>
+            <li>🎯 F: Focus on selected entry</li>
             <li>➕ Green button: Create new entry</li>
           </ul>
         </div>
         
         {/* Connection Management */}
-        <div>
+        <div className="mb-3">
           <h3 className="text-sm font-semibold text-gray-300 mb-1">Connections</h3>
           <ul className="text-sm space-y-1 text-gray-200">
             <li>🔗 Ctrl/Cmd + Click: Toggle connection</li>
             <li>↩️ Ctrl/Cmd + Z: Undo last action</li>
             <li>↪️ Ctrl/Cmd + Shift + Z: Redo action</li>
+          </ul>
+        </div>
+        
+        {/* More Help */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-300 mb-1">More</h3>
+          <ul className="text-sm space-y-1 text-gray-200">
+            <li>❓ Press ? for all keyboard shortcuts</li>
           </ul>
         </div>
       </div>
@@ -919,6 +1065,12 @@ export default function Scene3D() {
           }}
         />
       )}
+      
+      {/* Extended Help Modal */}
+      <ExtendedHelpModal
+        isOpen={showExtendedHelp}
+        onClose={() => setShowExtendedHelp(false)}
+      />
     </div>
   )
 }

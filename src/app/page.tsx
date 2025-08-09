@@ -39,8 +39,8 @@ export default function Home() {
         
         {/* Welcome message when no mind map is loaded */}
         {!mindMapId && entries.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center p-8 bg-white/90 dark:bg-neutral-900/90 rounded-lg shadow-lg pointer-events-auto">
+          <div className="absolute inset-x-0 top-0 bottom-24 flex items-center justify-center pointer-events-none">
+            <div className="text-center p-8 bg-white/90 dark:bg-neutral-900/90 rounded-lg shadow-lg pointer-events-auto max-w-lg mx-auto">
               <h2 className="text-2xl font-bold mb-4 text-neutral-900 dark:text-neutral-100">
                 Welcome to 3D Mind Map
               </h2>
