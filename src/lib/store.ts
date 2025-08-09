@@ -74,6 +74,9 @@ interface MindMapState {
   // UI Overlay state - using object instead of Map for Immer compatibility
   overlays: Record<string, OverlayState>
   
+  // Help overlay state
+  isHelpOverlayCollapsed: boolean
+  
   // Connection status
   connectionStatus: 'connected' | 'disconnected' | 'connecting'
   
@@ -130,6 +133,10 @@ interface MindMapState {
   
   // Connection status actions
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'connecting') => void
+  
+  // Help overlay actions
+  toggleHelpOverlay: () => void
+  setHelpOverlayCollapsed: (collapsed: boolean) => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -160,6 +167,7 @@ export const useMindMapStore = create<MindMapState>()(
     movementMode: null,
     isCameraLocked: false,
     overlays: {},
+    isHelpOverlayCollapsed: false,
     connectionStatus: 'disconnected' as const,
     
     // Entry actions
@@ -557,6 +565,10 @@ export const useMindMapStore = create<MindMapState>()(
         state.currentMindMapId = data.id
         state.selectedEntryId = null
         state.hoveredEntryId = null
+        // Load UI settings
+        if (data.uiSettings?.isHelpOverlayCollapsed !== undefined) {
+          state.isHelpOverlayCollapsed = data.uiSettings.isHelpOverlayCollapsed
+        }
       })
     },
     
@@ -594,7 +606,10 @@ export const useMindMapStore = create<MindMapState>()(
         entries: get().entries,
         connections: get().connections,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        uiSettings: {
+          isHelpOverlayCollapsed: get().isHelpOverlayCollapsed
+        }
       }
     },
     
@@ -723,6 +738,19 @@ export const useMindMapStore = create<MindMapState>()(
     setConnectionStatus: (status: 'connected' | 'disconnected' | 'connecting') => {
       set((state) => {
         state.connectionStatus = status
+      })
+    },
+    
+    // Help overlay actions
+    toggleHelpOverlay: () => {
+      set((state) => {
+        state.isHelpOverlayCollapsed = !state.isHelpOverlayCollapsed
+      })
+    },
+    
+    setHelpOverlayCollapsed: (collapsed: boolean) => {
+      set((state) => {
+        state.isHelpOverlayCollapsed = collapsed
       })
     }
   }))

@@ -22,6 +22,9 @@ export interface MindMap {
   connections: Connection[]
   createdAt: Date
   updatedAt: Date
+  uiSettings?: {
+    isHelpOverlayCollapsed?: boolean
+  }
 }
 
 export type Position3D = [number, number, number]

@@ -30,7 +30,7 @@ export function UserMenu() {
 
     // Subscribe to auth changes
     const authListener = authService.onAuthStateChange((event, session) => {
-      setUser((session as any)?.user ?? null)
+      setUser(session?.user ?? null)
     })
 
     return () => {

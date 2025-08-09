@@ -95,7 +95,17 @@
 ### 6.3 Keyboard Shortcuts
 - Implement ESC key for closing editor
 - Implement ESC key for canceling movement
-- Add other helpful shortcuts (Delete key, etc.)
+- Add other helpful shortcuts (Delete key, etc.). Do not list any of these additional shortcuts on the Help Overlay.
+- Define an additional keyboard shortcut of "?", which will display a fairly large centered modal overlay that lists *all* keyboard schortcuts, including the new ones defined in the previous task. The new "?" keyboard shortcut and the "F" shortcut should be added to the Help Overlay. This extended Help modal overlay should have an "X" close control in the upper right, but it should be closable by typing Esc or by clicking any area outside the modal. All other keyboard shortcuts should be disabled while the extended Help modal overlay is displayed. The rest of the canvas should have reduced visibility until the modal is dismissed.
+
+### 6.4 Additional UI improvements
+- Can the app detect when it is running in a touch environment vs. a mouse environment? if so, then list the touch controls in the Help Overlay only when the app is running in a touch environment, and hide the touch controls when running in a mouse environment. If the app can detect when it is running in both a touch and mouse environment at the same time, then display suppress the keyboard / mouse controls when running in a touch-only environment, and show both sets of controls when running in a touch and mouse environment.
+- add the option to collapse the Help Overlay to the bottom of the screen. In that state, only the header "3D Mind Map controls" should be visible, plus the control to expand the Help Overlay. Display the Help Overlay expanded by default with a new Mind Map, but remember the setting when the Mind Map state is saved. If an existing Mind Map is loaded, use this setting to determine the state of the Help Overlay. If an existing Mind Map is loaded but it doesn't indicate the open vs. collapsed state for the Help Overlay, then default to the opened state.
+
+## 6.7 Local storage mode
+- Update the state functionality to use local browser storage whenever Supabase is unavailable. support all of the same functionality as with Supabase, but skip any login / auth functionality. In this scenario. also indicate on the splash page that cloud storage is unavailable and so Mind Maps will be saved to local storage.
+- At app startup, if Supabase is unavailable, then check local browser storage for existing Mind Maps.
+- If Supabase is unavailable and local browser storage is also unavailable, then indicate on the splash page that the app is in offline mode, and work will be stored locally, and only for the current browser session.
 
 ## Phase 7: Performance & Testing
 ### 7.1 Performance Optimization
@@ -129,7 +139,9 @@
 
 ## Baklog phase: post-launch options
 ### Backlog.1: UI
- - if space permits, display a delete button conditionally, near the Add Entry button, whenever an Entry is seleted, and then remove it when the Entry is unselected.
+- if space permits, display a delete button conditionally, near the Add Entry button, whenever an Entry is seleted, and then remove it when the Entry is unselected.
+
+### Backlog.2: Voice+AI-powered Mind Map creation
 
 ## Key Technical Decisions
 - Use Tiptap for WYSIWYG editor (better React integration)

@@ -12,6 +12,9 @@ export const useConnectionFeedback = () => useMindMapStore(state => state.connec
 export const useSelectedEntry = () => useMindMapStore(state => state.getSelectedEntry())
 export const useHoveredEntry = () => useMindMapStore(state => state.getHoveredEntry())
 
+// UI state selectors
+export const useIsHelpOverlayCollapsed = () => useMindMapStore(state => state.isHelpOverlayCollapsed)
+
 // Action hooks
 export const useEntryActions = () => {
   const addEntry = useMindMapStore(state => state.addEntry)
@@ -64,6 +67,17 @@ export const useMindMapActions = () => {
     clearMindMap,
     loadMindMap,
     getMindMapData
+  }
+}
+
+// Help overlay actions
+export const useHelpOverlayActions = () => {
+  const toggleHelpOverlay = useMindMapStore(state => state.toggleHelpOverlay)
+  const setHelpOverlayCollapsed = useMindMapStore(state => state.setHelpOverlayCollapsed)
+  
+  return {
+    toggleHelpOverlay,
+    setHelpOverlayCollapsed
   }
 }
 

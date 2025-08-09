@@ -23,6 +23,7 @@ import { ConnectionFeedback } from '@/components/ConnectionFeedback'
 import { useToast } from '@/hooks/use-toast'
 import { useMindMapStore } from '@/lib/store'
 import { ExtendedHelpModal } from '@/components/ExtendedHelpModal'
+import { HelpOverlay } from '@/components/HelpOverlay'
 
 interface EntryProps {
   entry: EntryType
@@ -1001,55 +1002,7 @@ export default function Scene3D() {
       </button>
       
       {/* Help Overlay */}
-      <div className="absolute bottom-4 left-4 bg-gray-900/70 backdrop-blur-md text-white p-5 rounded-xl shadow-2xl border border-gray-700/50 z-10 max-w-sm">
-        <h2 className="text-lg font-bold mb-3">3D Mind Map controls</h2>
-        
-        {/* Camera Controls */}
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-gray-300 mb-1">Camera Controls</h3>
-          <ul className="text-sm space-y-1 text-gray-200">
-            <li>🖱️ Left click + drag: Orbit camera</li>
-            <li>🖱️ Right click + drag: Pan camera</li>
-            <li>🖱️ Scroll wheel: Zoom in/out</li>
-            <li>⌨️ Space: Reset camera position</li>
-            <li>📱 One finger drag: Orbit (touch)</li>
-            <li>📱 Two finger drag: Pan (touch)</li>
-            <li>📱 Pinch: Zoom (touch)</li>
-          </ul>
-        </div>
-        
-        {/* Entry Interactions */}
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-gray-300 mb-1">Entry Interactions</h3>
-          <ul className="text-sm space-y-1 text-gray-200">
-            <li>📦 Click entry: Select</li>
-            <li>✏️ Click [Edit] on selected: Open editor</li>
-            <li>🔄 Drag selected: Move (horizontal)</li>
-            <li>⬆️ Shift + drag: Move depth (in/out)</li>
-            <li>🗑️ Delete key: Delete selected</li>
-            <li>🎯 F: Focus on selected entry</li>
-            <li>➕ Green button: Create new entry</li>
-          </ul>
-        </div>
-        
-        {/* Connection Management */}
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-gray-300 mb-1">Connections</h3>
-          <ul className="text-sm space-y-1 text-gray-200">
-            <li>🔗 Ctrl/Cmd + Click: Toggle connection</li>
-            <li>↩️ Ctrl/Cmd + Z: Undo last action</li>
-            <li>↪️ Ctrl/Cmd + Shift + Z: Redo action</li>
-          </ul>
-        </div>
-        
-        {/* More Help */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-300 mb-1">More</h3>
-          <ul className="text-sm space-y-1 text-gray-200">
-            <li>❓ Press ? for all keyboard shortcuts</li>
-          </ul>
-        </div>
-      </div>
+      <HelpOverlay />
       
       {/* Connection Feedback */}
       {connectionFeedback && (
