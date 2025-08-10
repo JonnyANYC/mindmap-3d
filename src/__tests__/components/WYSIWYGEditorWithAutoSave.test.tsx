@@ -1,0 +1,491 @@
+import React from 'react'
+import { render, fireEvent, waitFor, screen, act } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import { WYSIWYGEditorWithAutoSave } from '@/components/Editor/WYSIWYGEditorWithAutoSave'
+import { useMindMapStore } from '@/lib/store'
+
+// Mock the base WYSIWYG editor
+jest.mock('@/components/Editor/WYSIWYGEditor', () => ({
+  WYSIWYGEditor: ({ 
+    initialContent, 
+    onContentChange,
+    onSave 
+  }: { 
+    initialContent: string
+    onContentChange: (content: string) => void
+    onSave: (content: string) => void
+  }) => {
+    const [content, setContent] = React.useState(initialContent)
+    
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newContent = e.target.value
+      setContent(newContent)
+      onContentChange(newContent)
+    }
+    
+    const handleSave = () => {
+      onSave(content)
+    }
+    
+    return (
+      <div data-testid="wysiwyg-editor">
+        <textarea
+          data-testid="editor-textarea"
+          value={content}
+          onChange={handleChange}
+        />
+        <button
+          data-testid="save-button"
+          onClick={handleSave}
+        >
+          Save
+        </button>
+      </div>
+    )
+  }
+}))
+
+describe('WYSIWYGEditorWithAutoSave', () => {
+  const mockEntryId = 'test-entry-1'
+  const mockInitialContent = '<p>Initial content</p>'
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    const store = useMindMapStore.getState()
+    store.clearMindMap()
+    
+    // Add test entry
+    store.addEntry({
+      id: mockEntryId,
+      position: [0, 0, 0],
+      summary: 'Test Entry',
+      content: mockInitialContent,
+      color: '#4CAF50',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    })
+  })
+
+  afterEach(() => {
+    jest.clearAllMocks()
+    jest.useRealTimers()
+  })
+
+  describe('Auto-save Functionality', () => {
+    it('should auto-save after 1.5 seconds of inactivity', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Type new content
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      // Content should not be saved immediately
+      expect(updateEntrySpy).not.toHaveBeenCalled()
+      
+      // Fast-forward 1.5 seconds
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      // Content should now be saved
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: 'New content',
+          summary: 'New content'
+        })
+      })
+    })
+
+    it('should reset auto-save timer on each keystroke', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Type first character
+      fireEvent.change(textarea, { target: { value: 'A' } })
+      
+      // Wait 1 second
+      act(() => {
+        jest.advanceTimersByTime(1000)
+      })
+      
+      // Type second character (should reset timer)
+      fireEvent.change(textarea, { target: { value: 'AB' } })
+      
+      // Wait another 1 second (total 2 seconds, but timer was reset)
+      act(() => {
+        jest.advanceTimersByTime(1000)
+      })
+      
+      // Should not have saved yet
+      expect(updateEntrySpy).not.toHaveBeenCalled()
+      
+      // Wait the remaining 0.5 seconds
+      act(() => {
+        jest.advanceTimersByTime(500)
+      })
+      
+      // Now it should save
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: 'AB',
+          summary: 'AB'
+        })
+      })
+    })
+
+    it('should extract summary from first line of content', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Type multi-line content
+      fireEvent.change(textarea, { 
+        target: { value: 'First line summary\nSecond line\nThird line' } 
+      })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: 'First line summary\nSecond line\nThird line',
+          summary: 'First line summary'
+        })
+      })
+    })
+
+    it('should limit summary to 50 characters', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      const longText = 'This is a very long line that exceeds fifty characters and should be truncated'
+      
+      fireEvent.change(textarea, { target: { value: longText } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: longText,
+          summary: longText.substring(0, 50)
+        })
+      })
+    })
+
+    it('should use "New Entry" as summary for empty content', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: '' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: '',
+          summary: 'New Entry'
+        })
+      })
+    })
+  })
+
+  describe('Manual Save', () => {
+    it('should save immediately on manual save', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      const saveButton = screen.getByTestId('save-button')
+      
+      // Type new content
+      fireEvent.change(textarea, { target: { value: 'Manual save content' } })
+      
+      // Click save button
+      fireEvent.click(saveButton)
+      
+      // Should save immediately without waiting
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: 'Manual save content',
+          summary: 'Manual save content'
+        })
+      })
+    })
+
+    it('should cancel auto-save timer on manual save', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      const saveButton = screen.getByTestId('save-button')
+      
+      // Type new content
+      fireEvent.change(textarea, { target: { value: 'Test content' } })
+      
+      // Wait 1 second
+      act(() => {
+        jest.advanceTimersByTime(1000)
+      })
+      
+      // Manual save
+      fireEvent.click(saveButton)
+      
+      // Clear any pending promises
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledTimes(1)
+      })
+      
+      // Wait another 1.5 seconds
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      // Should not save again (auto-save was cancelled)
+      expect(updateEntrySpy).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('Save Status Indicator', () => {
+    it('should show "Saving..." during save', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      expect(screen.getByText('Saving...')).toBeInTheDocument()
+    })
+
+    it('should show "Saved" after successful save', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+    })
+
+    it('should hide "Saved" indicator after 2 seconds', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+      
+      // Wait 2 seconds for indicator to disappear
+      act(() => {
+        jest.advanceTimersByTime(2000)
+      })
+      
+      expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    })
+
+    it('should show error message on save failure', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      updateEntrySpy.mockImplementation(() => {
+        throw new Error('Save failed')
+      })
+      
+      // Suppress console.error for this test
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Error saving')).toBeInTheDocument()
+      })
+      
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('Content Changes', () => {
+    it('should track content changes', () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Initially no "Saving..." indicator
+      expect(screen.queryByText('Saving...')).not.toBeInTheDocument()
+      
+      // Make a change
+      fireEvent.change(textarea, { target: { value: 'Changed content' } })
+      
+      // Still no "Saving..." until timer fires
+      expect(screen.queryByText('Saving...')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Cleanup', () => {
+    it('should clear timeouts on unmount', () => {
+      const { unmount } = render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Trigger auto-save timer
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      // Unmount before timer fires
+      unmount()
+      
+      // Advance timers - should not throw
+      expect(() => {
+        act(() => {
+          jest.advanceTimersByTime(2000)
+        })
+      }).not.toThrow()
+    })
+  })
+
+  describe('Error Handling', () => {
+    it('should handle HTML content extraction', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      // Type HTML content
+      fireEvent.change(textarea, { 
+        target: { value: '<p>HTML paragraph</p><div>Another element</div>' } 
+      })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(updateEntrySpy).toHaveBeenCalledWith(mockEntryId, {
+          content: '<p>HTML paragraph</p><div>Another element</div>',
+          summary: 'HTML paragraphAnother element' // Text content extracted
+        })
+      })
+    })
+  })
+})

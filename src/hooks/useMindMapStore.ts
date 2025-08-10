@@ -97,3 +97,6 @@ export const useIsEntryHovered = (id: string): boolean => {
 export const useConnectedEntries = (entryId: string): Entry[] => {
   return useMindMapStore(state => state.getConnectedEntries(entryId))
 }
+
+// Export the base store for testing
+export { useMindMapStore }
