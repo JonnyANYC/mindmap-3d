@@ -114,12 +114,12 @@
 - Add level-of-detail for distant entries
 - Ensure 60 FPS with 50+ entries
 
-### 7.2 Testing
-- Write unit tests for store actions
-- Write component tests for Entry and Connection
-- Test editor integration
-- Test touch device support
-- Performance testing with many entries
+### 7.2 Testing ✓
+- [x] Write unit tests for store actions ✓
+- [x] Write component tests for Entry and Connection ✓
+- [x] Test editor integration ✓
+- [x] Test touch device support ✓
+- [x] Performance testing with many entries ✓
 
 ## Phase 8: Camera Position Indicators
 ### 8.1 Camera Position Indicators
