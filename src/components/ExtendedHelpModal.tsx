@@ -170,9 +170,9 @@ export function ExtendedHelpModal({ isOpen, onClose }: ExtendedHelpModalProps) {
               </ul>
             </section>
             
-            {/* Help */}
+            {/* Help & Debug */}
             <section>
-              <h3 className="text-lg font-semibold mb-3 text-cyan-400">Help</h3>
+              <h3 className="text-lg font-semibold mb-3 text-cyan-400">Help & Debug</h3>
               <ul className="space-y-2 text-sm">
                 <li className="flex justify-between">
                   <span className="text-gray-300">Show this help modal</span>
@@ -181,6 +181,10 @@ export function ExtendedHelpModal({ isOpen, onClose }: ExtendedHelpModalProps) {
                 <li className="flex justify-between">
                   <span className="text-gray-300">Close this modal</span>
                   <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Esc</kbd>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-gray-300">Toggle debug display</span>
+                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Ctrl/Cmd + Shift + D</kbd>
                 </li>
               </ul>
             </section>

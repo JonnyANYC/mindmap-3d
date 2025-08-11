@@ -11,6 +11,15 @@ describe('MindMapStore', () => {
     store.clearDeletedEntries()
     // Reset help overlay state
     store.setHelpOverlayCollapsed(false)
+    // Reset connection history by setting state directly
+    useMindMapStore.setState({ 
+      connectionHistory: [], 
+      connectionHistoryIndex: -1,
+      movingEntryId: null,
+      movementStartPosition: null,
+      movementGhostPosition: null,
+      movementMode: null 
+    })
   })
 
   describe('Entry Actions', () => {
@@ -57,7 +66,7 @@ describe('MindMapStore', () => {
       const entry = store.addEntry(existingEntry)
       
       expect(entry).toEqual(existingEntry)
-      expect(store.entries).toHaveLength(1)
+      expect(useMindMapStore.getState().entries).toHaveLength(1)
     })
 
     it('should not duplicate existing entry when adding Entry object', () => {
@@ -76,7 +85,7 @@ describe('MindMapStore', () => {
       store.addEntry(existingEntry)
       const entry2 = store.addEntry(existingEntry)
       
-      expect(store.entries).toHaveLength(1)
+      expect(useMindMapStore.getState().entries).toHaveLength(1)
       expect(entry2).toEqual(existingEntry)
     })
 
@@ -105,7 +114,7 @@ describe('MindMapStore', () => {
       
       store.updateEntry('non-existent', { summary: 'Test' })
       
-      expect(store.entries).toHaveLength(0)
+      expect(useMindMapStore.getState().entries).toHaveLength(0)
     })
 
     it('should delete an entry', () => {
@@ -116,9 +125,9 @@ describe('MindMapStore', () => {
       
       store.deleteEntry(entryId)
       
-      expect(store.entries).toHaveLength(0)
+      expect(useMindMapStore.getState().entries).toHaveLength(0)
       expect(store.getEntryById(entryId)).toBeUndefined()
-      expect(store.selectedEntryId).toBeNull()
+      expect(useMindMapStore.getState().selectedEntryId).toBeNull()
     })
 
     it('should delete an entry and its connections', () => {
@@ -131,12 +140,12 @@ describe('MindMapStore', () => {
       store.addConnection(entry1.id, entry2.id)
       store.addConnection(entry2.id, entry3.id)
       
-      expect(store.connections).toHaveLength(2)
+      expect(useMindMapStore.getState().connections).toHaveLength(2)
       
       store.deleteEntry(entry2.id)
       
-      expect(store.entries).toHaveLength(2)
-      expect(store.connections).toHaveLength(0)
+      expect(useMindMapStore.getState().entries).toHaveLength(2)
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
     })
 
     it('should store deleted entries for undo', () => {
@@ -147,8 +156,9 @@ describe('MindMapStore', () => {
       
       store.deleteEntry(entryId)
       
-      expect(store.deletedEntries).toHaveLength(1)
-      expect(store.deletedEntries[0].entry.id).toBe(entryId)
+      const state = useMindMapStore.getState()
+      expect(state.deletedEntries).toHaveLength(1)
+      expect(state.deletedEntries[0].entry.id).toBe(entryId)
     })
 
     it('should restore deleted entry', () => {
@@ -160,13 +170,13 @@ describe('MindMapStore', () => {
       
       store.deleteEntry(entry2.id)
       
-      const deletedEntry = store.deletedEntries[0]
+      const deletedEntry = useMindMapStore.getState().deletedEntries[0]
       store.restoreDeletedEntry(deletedEntry)
       
-      expect(store.entries).toHaveLength(2)
-      expect(store.connections).toHaveLength(1)
-      expect(store.selectedEntryId).toBe(entry2.id)
-      expect(store.deletedEntries).toHaveLength(0)
+      expect(useMindMapStore.getState().entries).toHaveLength(2)
+      expect(useMindMapStore.getState().connections).toHaveLength(1)
+      expect(useMindMapStore.getState().selectedEntryId).toBe(entry2.id)
+      expect(useMindMapStore.getState().deletedEntries).toHaveLength(0)
     })
 
     it('should clear deleted entries', () => {
@@ -175,11 +185,11 @@ describe('MindMapStore', () => {
       const entry = store.addEntry()
       store.deleteEntry(entry.id)
       
-      expect(store.deletedEntries).toHaveLength(1)
+      expect(useMindMapStore.getState().deletedEntries).toHaveLength(1)
       
       store.clearDeletedEntries()
       
-      expect(store.deletedEntries).toHaveLength(0)
+      expect(useMindMapStore.getState().deletedEntries).toHaveLength(0)
     })
 
     it('should move an entry', () => {
@@ -200,12 +210,12 @@ describe('MindMapStore', () => {
       const entry = store.addEntry()
       
       store.selectEntry(entry.id)
-      expect(store.selectedEntryId).toBe(entry.id)
-      expect(store.getSelectedEntry()?.id).toBe(entry.id)
+      expect(useMindMapStore.getState().selectedEntryId).toBe(entry.id)
+      expect(useMindMapStore.getState().getSelectedEntry()?.id).toBe(entry.id)
       
       store.selectEntry(null)
-      expect(store.selectedEntryId).toBeNull()
-      expect(store.getSelectedEntry()).toBeUndefined()
+      expect(useMindMapStore.getState().selectedEntryId).toBeNull()
+      expect(useMindMapStore.getState().getSelectedEntry()).toBeUndefined()
     })
 
     it('should hover and unhover entries', () => {
@@ -214,12 +224,12 @@ describe('MindMapStore', () => {
       const entry = store.addEntry()
       
       store.hoverEntry(entry.id)
-      expect(store.hoveredEntryId).toBe(entry.id)
-      expect(store.getHoveredEntry()?.id).toBe(entry.id)
+      expect(useMindMapStore.getState().hoveredEntryId).toBe(entry.id)
+      expect(useMindMapStore.getState().getHoveredEntry()?.id).toBe(entry.id)
       
       store.hoverEntry(null)
-      expect(store.hoveredEntryId).toBeNull()
-      expect(store.getHoveredEntry()).toBeUndefined()
+      expect(useMindMapStore.getState().hoveredEntryId).toBeNull()
+      expect(useMindMapStore.getState().getHoveredEntry()).toBeUndefined()
     })
   })
 
@@ -257,7 +267,7 @@ describe('MindMapStore', () => {
       const connection = store.addConnection(connectionObj)
       
       expect(connection).toEqual(connectionObj)
-      expect(store.connections).toHaveLength(1)
+      expect(useMindMapStore.getState().connections).toHaveLength(1)
     })
 
     it('should not allow duplicate connections', () => {
@@ -285,7 +295,7 @@ describe('MindMapStore', () => {
       const connection = store.addConnection(entry.id, entry.id)
       
       expect(connection).toBeNull()
-      expect(store.connections).toHaveLength(0)
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
     })
 
     it('should add connection to history', () => {
@@ -296,9 +306,10 @@ describe('MindMapStore', () => {
       
       store.addConnection(entry1.id, entry2.id)
       
-      expect(store.connectionHistory).toHaveLength(1)
-      expect(store.connectionHistory[0].type).toBe('add')
-      expect(store.connectionHistoryIndex).toBe(0)
+      const state = useMindMapStore.getState()
+      expect(state.connectionHistory).toHaveLength(1)
+      expect(state.connectionHistory[0].type).toBe('add')
+      expect(state.connectionHistoryIndex).toBe(0)
     })
 
     it('should show connection feedback overlay', () => {
@@ -309,9 +320,9 @@ describe('MindMapStore', () => {
       
       store.addConnection(entry1.id, entry2.id)
       
-      expect(store.connectionFeedback).toBeDefined()
-      expect(store.connectionFeedback?.message).toBe('Connection Added. Click to remove')
-      expect(store.overlays['connectionFeedback']?.visible).toBe(true)
+      expect(useMindMapStore.getState().connectionFeedback).toBeDefined()
+      expect(useMindMapStore.getState().connectionFeedback?.message).toBe('Connection Added. Click to remove')
+      expect(useMindMapStore.getState().overlays['connectionFeedback']?.visible).toBe(true)
     })
 
     it('should remove a connection', () => {
@@ -323,9 +334,9 @@ describe('MindMapStore', () => {
       store.addConnection(entry1.id, entry2.id)
       store.removeConnection(entry1.id, entry2.id)
       
-      expect(store.connections).toHaveLength(0)
-      expect(store.connectionHistory).toHaveLength(2)
-      expect(store.connectionHistory[1].type).toBe('remove')
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
+      expect(useMindMapStore.getState().connectionHistory).toHaveLength(2)
+      expect(useMindMapStore.getState().connectionHistory[1].type).toBe('remove')
     })
 
     it('should toggle connections', () => {
@@ -368,12 +379,12 @@ describe('MindMapStore', () => {
       
       // Add connection
       store.addConnection(entry1.id, entry2.id)
-      expect(store.connections).toHaveLength(1)
+      expect(useMindMapStore.getState().connections).toHaveLength(1)
       
       // Undo add
       store.undoConnection()
-      expect(store.connections).toHaveLength(0)
-      expect(store.connectionHistoryIndex).toBe(-1)
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
+      expect(useMindMapStore.getState().connectionHistoryIndex).toBe(-1)
     })
 
     it('should redo connection operations', () => {
@@ -388,8 +399,8 @@ describe('MindMapStore', () => {
       
       // Redo add
       store.redoConnection()
-      expect(store.connections).toHaveLength(1)
-      expect(store.connectionHistoryIndex).toBe(0)
+      expect(useMindMapStore.getState().connections).toHaveLength(1)
+      expect(useMindMapStore.getState().connectionHistoryIndex).toBe(0)
     })
 
     it('should clear connection feedback', () => {
@@ -399,12 +410,12 @@ describe('MindMapStore', () => {
       const entry2 = store.addEntry()
       
       store.addConnection(entry1.id, entry2.id)
-      expect(store.connectionFeedback).toBeDefined()
+      expect(useMindMapStore.getState().connectionFeedback).toBeDefined()
       
       store.clearConnectionFeedback()
       
-      expect(store.connectionFeedback).toBeNull()
-      expect(store.overlays['connectionFeedback']?.visible).toBe(false)
+      expect(useMindMapStore.getState().connectionFeedback).toBeNull()
+      expect(useMindMapStore.getState().overlays['connectionFeedback']?.visible).toBe(false)
     })
   })
 
@@ -416,8 +427,8 @@ describe('MindMapStore', () => {
       
       store.openEditor(entry.id)
       
-      expect(store.isEditorOpen).toBe(true)
-      expect(store.editingEntryId).toBe(entry.id)
+      expect(useMindMapStore.getState().isEditorOpen).toBe(true)
+      expect(useMindMapStore.getState().editingEntryId).toBe(entry.id)
     })
 
     it('should close editor', () => {
@@ -428,8 +439,8 @@ describe('MindMapStore', () => {
       
       store.closeEditor()
       
-      expect(store.isEditorOpen).toBe(false)
-      expect(store.editingEntryId).toBeNull()
+      expect(useMindMapStore.getState().isEditorOpen).toBe(false)
+      expect(useMindMapStore.getState().editingEntryId).toBeNull()
     })
   })
 
@@ -441,11 +452,12 @@ describe('MindMapStore', () => {
       
       store.startMovement(entry.id, entry.position, 'plane')
       
-      expect(store.movingEntryId).toBe(entry.id)
-      expect(store.movementStartPosition).toEqual([1, 2, 3])
-      expect(store.movementGhostPosition).toEqual([1, 2, 3])
-      expect(store.movementMode).toBe('plane')
-      expect(store.isCameraLocked).toBe(true)
+      const state = useMindMapStore.getState()
+      expect(state.movingEntryId).toBe(entry.id)
+      expect(state.movementStartPosition).toEqual([1, 2, 3])
+      expect(state.movementGhostPosition).toEqual([1, 2, 3])
+      expect(state.movementMode).toBe('plane')
+      expect(state.isCameraLocked).toBe(true)
     })
 
     it('should update movement position', () => {
@@ -457,7 +469,7 @@ describe('MindMapStore', () => {
       const newPosition: [number, number, number] = [4, 5, 6]
       store.updateMovementPosition(newPosition)
       
-      expect(store.movementGhostPosition).toEqual(newPosition)
+      expect(useMindMapStore.getState().movementGhostPosition).toEqual(newPosition)
     })
 
     it('should confirm movement', () => {
@@ -569,10 +581,10 @@ describe('MindMapStore', () => {
       
       store.clearMindMap()
       
-      expect(store.entries).toHaveLength(0)
-      expect(store.connections).toHaveLength(0)
-      expect(store.selectedEntryId).toBeNull()
-      expect(store.mindMapId).toBeNull()
+      expect(useMindMapStore.getState().entries).toHaveLength(0)
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
+      expect(useMindMapStore.getState().selectedEntryId).toBeNull()
+      expect(useMindMapStore.getState().mindMapId).toBeNull()
     })
 
     it('should load a mind map', () => {
@@ -705,7 +717,7 @@ describe('MindMapStore', () => {
       store.moveEntry('non-existent', [0, 0, 0])
       store.startMovement('non-existent', [0, 0, 0], 'plane')
       
-      expect(store.entries).toHaveLength(0)
+      expect(useMindMapStore.getState().entries).toHaveLength(0)
     })
 
     it('should handle missing targetId in addConnection', () => {
@@ -715,7 +727,7 @@ describe('MindMapStore', () => {
       const connection = store.addConnection(entry.id)
       
       expect(connection).toBeNull()
-      expect(store.connections).toHaveLength(0)
+      expect(useMindMapStore.getState().connections).toHaveLength(0)
     })
 
     it('should limit deleted entries history to 10', () => {
@@ -738,7 +750,7 @@ describe('MindMapStore', () => {
       const store = useMindMapStore.getState()
       
       const entry = store.addEntry()
-      const originalEntries = store.entries
+      const originalEntries = useMindMapStore.getState().entries
       
       store.updateEntry(entry.id, { summary: 'Updated' })
       
@@ -751,7 +763,7 @@ describe('MindMapStore', () => {
       
       const entry1 = store.addEntry()
       const entry2 = store.addEntry()
-      const originalConnections = store.connections
+      const originalConnections = useMindMapStore.getState().connections
       
       store.addConnection(entry1.id, entry2.id)
       

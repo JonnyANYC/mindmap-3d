@@ -24,6 +24,8 @@ import { useToast } from '@/hooks/use-toast'
 import { useMindMapStore } from '@/lib/store'
 import { ExtendedHelpModal } from '@/components/ExtendedHelpModal'
 import { HelpOverlay } from '@/components/HelpOverlay'
+import { PerformanceMonitor } from '@/components/PerformanceMonitor'
+import { DebugDisplay } from '@/components/DebugDisplay'
 
 interface EntryProps {
   entry: EntryType
@@ -106,6 +108,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   const { selectEntry, hoverEntry, toggleConnection } = useEntryActions()
   const { clearConnectionFeedback } = useConnectionActions()
   const openEditor = useMindMapStore((state) => state.openEditor)
+  const { camera } = useThree()
   
   const isSelected = selectedEntryId === entry.id
   const isHovered = hoveredEntryId === entry.id
@@ -115,6 +118,9 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
     : isHovered 
       ? HOVERED_ENTRY_COLOR 
       : entry.color || DEFAULT_ENTRY_COLOR
+  
+  // LOD state
+  const [lodLevel, setLodLevel] = useState<'near' | 'far'>('near')
 
   // Drag detection state
   const [dragStartPos, setDragStartPos] = useState<[number, number] | null>(null)
@@ -123,6 +129,22 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   
   // Determine which text to show during drag
   const isFrontFacingCamera = useIsFacingCamera(entry.position)
+  
+  // Update LOD based on distance from camera
+  useFrame(() => {
+    const entryPos = new Vector3(...entry.position)
+    const distance = camera.position.distanceTo(entryPos)
+    
+    // Define LOD thresholds
+    const FAR_THRESHOLD = 15
+    
+    // Update LOD level
+    if (distance > FAR_THRESHOLD && lodLevel !== 'far') {
+      setLodLevel('far')
+    } else if (distance <= FAR_THRESHOLD && lodLevel !== 'near') {
+      setLodLevel('near')
+    }
+  })
   
   // Handle global pointer events for drag
   useEffect(() => {
@@ -172,6 +194,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
       <mesh
         visible={!isDragging}
         ref={meshRef}
+        frustumCulled={true}
         onClick={(e) => {
           e.stopPropagation()
           
@@ -218,20 +241,21 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
         <meshStandardMaterial color={color} />
       </mesh>
       <Text
-        visible={!isDragging || isFrontFacingCamera}
+        visible={(!isDragging || isFrontFacingCamera) && lodLevel === 'near'}
         position={[0, 0, 0.026]}
         fontSize={0.15}
         color="white"
         anchorX="center"
         anchorY="middle"
         maxWidth={0.9}
+        frustumCulled={true}
         // @ts-expect-error - pointerEvents prop exists but not in types
         pointerEvents="none"
       >
         {entry.summary}
       </Text>
       <Text
-        visible={!isDragging || !isFrontFacingCamera}
+        visible={(!isDragging || !isFrontFacingCamera) && lodLevel === 'near'}
         position={[0, 0, -0.026]}
         fontSize={0.15}
         color="white"
@@ -239,12 +263,13 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
         anchorY="middle"
         maxWidth={0.9}
         rotation={[0, Math.PI, 0]}
+        frustumCulled={true}
         // @ts-expect-error - pointerEvents prop exists but not in types
         pointerEvents="none"
       >
         {entry.summary}
       </Text>
-      {isSelected && !isDragging && (
+      {isSelected && !isDragging && lodLevel === 'near' && (
         <>
           <Text
             position={[0, 0.45, 0.026]}
@@ -252,6 +277,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
             color="white"
             anchorX="center"
             anchorY="middle"
+            frustumCulled={true}
           >
             Click and drag to move
           </Text>
@@ -261,6 +287,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
             color="white"
             anchorX="center"
             anchorY="middle"
+            frustumCulled={true}
             onClick={(e) => {
               e.stopPropagation()
               openEditor(entry.id)
@@ -275,6 +302,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
             anchorX="center"
             anchorY="middle"
             rotation={[0, Math.PI, 0]}
+            frustumCulled={true}
             onClick={(e) => {
               e.stopPropagation()
               openEditor(entry.id)
@@ -298,6 +326,7 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
   const meshRef = useRef<Mesh>(null!)
   const { camera, raycaster, scene } = useThree()
   const [opacity, setOpacity] = useState(1)
+  const [isVisible, setIsVisible] = useState(true)
   
   // Calculate connection geometry with smart surface selection
   const { position, rotation, length } = useMemo(() => {
@@ -364,14 +393,49 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
     }
   }, [sourceEntry.position, targetEntry.position])
   
-  // Update opacity based on occlusion with improved detection
+  // Create frustum once and reuse
+  const frustumRef = useRef(new THREE.Frustum())
+  const cameraMatrixRef = useRef(new THREE.Matrix4())
+  const frameCountRef = useRef(0)
+  
+  // Update opacity based on occlusion with improved detection and frustum culling
   useFrame(() => {
     if (!meshRef.current) return
+    
+    // Update frustum with current camera matrices
+    cameraMatrixRef.current.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    )
+    frustumRef.current.setFromProjectionMatrix(cameraMatrixRef.current)
+    
+    // Create bounding spheres for entries
+    const sourceSphere = new THREE.Sphere(new Vector3(...sourceEntry.position), 0.7)
+    const targetSphere = new THREE.Sphere(new Vector3(...targetEntry.position), 0.7)
+    
+    // Check if either entry is visible
+    const sourceInFrustum = frustumRef.current.intersectsSphere(sourceSphere)
+    const targetInFrustum = frustumRef.current.intersectsSphere(targetSphere)
+    
+    // Hide connection if both entries are outside frustum
+    if (!sourceInFrustum && !targetInFrustum) {
+      setIsVisible(false)
+      return
+    } else {
+      setIsVisible(true)
+    }
+    
+    // Skip occlusion calculation if connection is not visible
+    if (!isVisible) return
+    
+    // Throttle occlusion checks - only check every 3rd frame
+    frameCountRef.current++
+    if (frameCountRef.current % 3 !== 0) return
     
     const cameraPos = camera.position.clone()
     
     // Cast rays from camera to multiple points along the connection
-    const checkPoints = 5 // Number of points to check along the connection
+    const checkPoints = 3 // Reduced from 5 for better performance
     let occludedCount = 0
     
     for (let i = 0; i <= checkPoints; i++) {
@@ -408,26 +472,28 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
     let targetOpacity = 1
     
     if (occlusionRatio > 0.6) {
-      targetOpacity = 0.15 // Heavily occluded
+      targetOpacity = 0.25 // Heavily occluded (25% per PRD)
     } else if (occlusionRatio > 0.3) {
-      targetOpacity = 0.4 // Partially occluded
+      targetOpacity = 0.5 // Partially occluded
     } else if (occlusionRatio > 0) {
-      targetOpacity = 0.7 // Slightly occluded
+      targetOpacity = 0.75 // Slightly occluded
     }
     
-    // Smooth opacity transitions
+    // Smooth opacity transitions with larger threshold
     const opacityDiff = targetOpacity - opacity
-    if (Math.abs(opacityDiff) > 0.01) {
-      setOpacity(opacity + opacityDiff * 0.1)
+    if (Math.abs(opacityDiff) > 0.05) {
+      setOpacity(opacity + opacityDiff * 0.2)
     }
   })
   
   return (
     <DreiCylinder
       ref={meshRef}
+      visible={isVisible}
       args={[0.01, 0.01, length, 8]}
       position={position}
       rotation={rotation}
+      frustumCulled={true}
     >
       <meshStandardMaterial 
         color={DEFAULT_ENTRY_COLOR}
@@ -582,6 +648,7 @@ export default function Scene3D() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   const [showExtendedHelp, setShowExtendedHelp] = useState(false)
+  const [showDevTools, setShowDevTools] = useState(false)
   
   // Drag state
   const [dragState, setDragState] = useState<{
@@ -888,11 +955,16 @@ export default function Scene3D() {
         e.preventDefault()
         setShowExtendedHelp(prev => !prev)
       }
+      // Check for Ctrl/Cmd + Shift + D (toggle dev tools)
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault()
+        setShowDevTools(prev => !prev)
+      }
     }
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast, handleAddEntry, addEntry, setShowExtendedHelp, showExtendedHelp])
+  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast, handleAddEntry, addEntry, setShowExtendedHelp, showExtendedHelp, setShowDevTools])
   
   // Determine cursor style based on drag state
   const getCursorStyle = () => {
@@ -989,6 +1061,12 @@ export default function Scene3D() {
             />
           )
         })}
+        
+        {/* Performance Monitor (needs to be inside Canvas for useFrame) */}
+        {showDevTools && <PerformanceMonitor onFPSUpdate={(fps) => {
+          // Store FPS in a ref that can be accessed by FPSDisplay
+          (window as unknown as { __currentFPS?: number }).__currentFPS = fps
+        }} />}
       </Canvas>
       
       {/* Add Entry Button - Floating Action Button */}
@@ -1000,6 +1078,7 @@ export default function Scene3D() {
       >
         <Plus className="h-8 w-8" />
       </button>
+      
       
       {/* Help Overlay */}
       <HelpOverlay />
@@ -1024,6 +1103,9 @@ export default function Scene3D() {
         isOpen={showExtendedHelp}
         onClose={() => setShowExtendedHelp(false)}
       />
+      
+      {/* Debug Display */}
+      <DebugDisplay show={showDevTools} />
     </div>
   )
 }

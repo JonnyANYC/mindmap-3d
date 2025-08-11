@@ -26,7 +26,7 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
     })
 
     // Subscribe to auth changes
-    const { data: authListener } = authService.onAuthStateChange((event, session) => {
+    const authListener = authService.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null)
       if (!session?.user) {
         router.push('/auth')
@@ -34,7 +34,7 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
     })
 
     return () => {
-      authListener?.subscription.unsubscribe()
+      authListener?.data?.subscription.unsubscribe()
     }
   }, [router])
 
