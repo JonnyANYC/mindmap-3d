@@ -6,6 +6,7 @@ export interface Entry {
   color?: string
   createdAt: Date
   updatedAt: Date
+  isRoot?: boolean
 }
 
 export interface Connection {

@@ -110,14 +110,18 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   const openEditor = useMindMapStore((state) => state.openEditor)
   const { camera } = useThree()
   
-  const isSelected = selectedEntryId === entry.id
-  const isHovered = hoveredEntryId === entry.id
+  const isSelected = useSelectedEntryId() === entry.id
+  const isHovered = useHoveredEntryId() === entry.id
+  const rootEntryId = useMindMapStore((state) => state.rootEntryId)
+  const isRoot = entry.id === rootEntryId
   
-  const color = isSelected 
-    ? SELECTED_ENTRY_COLOR 
-    : isHovered 
-      ? HOVERED_ENTRY_COLOR 
-      : entry.color || DEFAULT_ENTRY_COLOR
+  const color = isRoot
+    ? '#007bff' // Blue color for root entry
+    : isSelected 
+      ? SELECTED_ENTRY_COLOR 
+      : isHovered 
+        ? HOVERED_ENTRY_COLOR 
+        : entry.color || DEFAULT_ENTRY_COLOR
   
   // LOD state
   const [lodLevel, setLodLevel] = useState<'near' | 'far'>('near')

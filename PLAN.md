@@ -121,8 +121,31 @@
 - [x] Test touch device support ✓
 - [x] Performance testing with many entries ✓
 
-## Phase 8: Camera Position Indicators
-### 8.1 Camera Position Indicators
+## Phase 8: Re-arrange all Entries in the graph around a selected central / root Entry
+
+### 8.1 Root entry
+- One entry in the mind map is designated as the root entry. this is the first entry by default, but the user is able to press a button in the edit overlay to identify a new root entry. Exactly one entry is the root entry, so when a new root entry is chosen, the existing one is no longer the root entry.
+
+### 8.2 Force-directed re-arranging of a single entry and its children
+- The user has the option to re-arrange the children of the root entry. This is a temporary feature to test the approach. when Control+Shift+R is pressed, all of the children of the current root entry are repositioned within a bounding sphere of distance 5 from the root entry. force-directed spacing is used, with entries repelling each other and connections keeping everything constrained. the children should start near the edge of the bounding sphere, and then use force-directed spacing to find an equilibrium state. for now the entries can be simply moved from their existing position to their new position. no need yet for an animation as part of the move.
+- When the children of the root entry are re-arranged, the movement should be animated to maintain continuity. directly update the position property of the 3D objects (entries and connections) rather than re-rendering entire components. The animation loop should use requestAnimationFrame for smooth, browser-optimized rendering. the children should move into their new location over the course of a second.
+- perform a simplified re-arranging if the root entry has 6 or fewer children -- in this scenario, simply move each child to be 5 units from the root entry, in one of the 3 axes. in other words, position the children at a distance of -5 or +5 on the x, y, and z axes, in that order. Animate this movement a little faster since there is less activity -- within half a second if possible. 
+
+### 8.3 Force-directed re-arranging of the entire mind map
+- Expand the re-arrange action to also re-arrange the children of the first child of the root entry. And then perform the action recursively on the first child of that entry and so on, until an entry is reached that has no additional children. keep track of which entries have been re-arranged. after an entry has been re-arranged, do not re-arrange it again as part of this action. Once the re-arranging is complete, clear the memory of which entries are re-arranged, so this information does not pollute future re-arrangement requests.
+- Expand the re-arrange action to cover the entire mind map -- Once re-arranging the root entry, recursively act on each child as well. keep track of which entries have been re-arranged. after an entry has been re-arranged, do not re-arrange it again as part of this action. Once the re-arranging is complete, clear the memory of which entries are re-arranged, so this information does not pollute future re-arrangement requests.
+
+### 8.4 Optimizations to re-rrangement
+- After each entry is re-arranged, temporarily calculate how many decendents are under each of its children. when choosing which child to process next, proceed in order of most decendents to least. test the performance of this optimization when it is implemented. If it slows down the re-arrangement feature too much, then disable this optimization on very large mind maps.
+- Consider moving the re-arrangement computation to a Web Worker.
+- Add a transient notice at the bottom of the page when a re-arrangement is complete. Indicate in the message how many wall seconds were consumed by the action, to a precision of 1 decimal place.
+
+## Phase 9: Navigate the camera smoothly to the selected entry when the user chooses the "focus" feature.
+
+## Phase 10: For large mind maps, dim all of the map except for the currently selected entry and its direct connections.
+
+## Phase 11: Camera Position Indicators
+### 11.1 Camera Position Indicators
 - Create dynamic camera position tracking
 - Implement arrow indicators pointing to z-axis and y-axis planes
 - Add distance calculations to origin planes

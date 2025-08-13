@@ -46,6 +46,7 @@ interface MindMapState {
   hoveredEntryId: string | null
   mindMapId: string | null
   currentMindMapId: string | null
+  rootEntryId: string | null
   
   // Connection feedback
   connectionFeedback: {
@@ -89,6 +90,7 @@ interface MindMapState {
   moveEntry: (id: string, position: Position3D) => void
   selectEntry: (id: string | null) => void
   hoverEntry: (id: string | null) => void
+  setRootEntry: (id: string) => void
   
   // Connection actions
   addConnection: (sourceIdOrConnection: string | Connection, targetId?: string) => Connection | null
@@ -155,6 +157,7 @@ export const useMindMapStore = create<MindMapState>()(
     hoveredEntryId: null,
     mindMapId: null,
     currentMindMapId: null,
+    rootEntryId: null,
     connectionFeedback: null,
     connectionHistory: [],
     connectionHistoryIndex: -1,
@@ -197,13 +200,17 @@ export const useMindMapStore = create<MindMapState>()(
           content: '',
           color: DEFAULT_ENTRY_COLOR,
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
+          isRoot: get().entries.length === 0
         }
         
         set((state) => {
           state.entries.push(newEntry)
           // Auto-select the newly created entry
           state.selectedEntryId = newEntry.id
+          if (newEntry.isRoot) {
+            state.rootEntryId = newEntry.id
+          }
         })
         
         return newEntry
@@ -219,16 +226,25 @@ export const useMindMapStore = create<MindMapState>()(
         }
       })
     },
+
+    setRootEntry: (id: string) => {
+      set((state) => {
+        state.entries.forEach(entry => {
+          entry.isRoot = entry.id === id
+        })
+        state.rootEntryId = id
+      })
+    },
     
     deleteEntry: (id: string) => {
       const entryToDelete = get().entries.find(e => e.id === id)
       if (!entryToDelete) return
-      
+
       // Get all connections for this entry
       const connectionsToDelete = get().connections.filter(
         c => c.sourceId === id || c.targetId === id
       )
-      
+
       set((state) => {
         // Store the deleted entry with its connections
         const deletedEntry = {
@@ -237,12 +253,12 @@ export const useMindMapStore = create<MindMapState>()(
           deletedAt: new Date()
         }
         state.deletedEntries.push(deletedEntry)
-        
+
         // Keep only the last 10 deleted entries
         if (state.deletedEntries.length > 10) {
           state.deletedEntries = state.deletedEntries.slice(-10)
         }
-        
+
         // Set a timer to remove this entry after 30 seconds
         setTimeout(() => {
           set((state) => {
@@ -251,32 +267,32 @@ export const useMindMapStore = create<MindMapState>()(
             )
           })
         }, 30000)
-        
+
         // Remove the entry
         state.entries = state.entries.filter(e => e.id !== id)
-        
+
         // Remove all connections to/from this entry
         state.connections = state.connections.filter(
           c => c.sourceId !== id && c.targetId !== id
         )
-        
+
         // Clear selection if this entry was selected
         if (state.selectedEntryId === id) {
           state.selectedEntryId = null
         }
-        
+
         // Clear hover if this entry was hovered
         if (state.hoveredEntryId === id) {
           state.hoveredEntryId = null
         }
       })
     },
-    
+
     restoreDeletedEntry: (deletedEntry: DeletedEntry) => {
       set((state) => {
         // Restore the entry
         state.entries.push(deletedEntry.entry)
-        
+
         // Restore connections (only if both entries still exist)
         deletedEntry.connections.forEach(connection => {
           const sourceExists = state.entries.some(e => e.id === connection.sourceId)
@@ -285,23 +301,23 @@ export const useMindMapStore = create<MindMapState>()(
             state.connections.push(connection)
           }
         })
-        
+
         // Remove from deleted entries
         state.deletedEntries = state.deletedEntries.filter(
           de => de.entry.id !== deletedEntry.entry.id
         )
-        
+
         // Select the restored entry
         state.selectedEntryId = deletedEntry.entry.id
       })
     },
-    
+
     clearDeletedEntries: () => {
       set((state) => {
         state.deletedEntries = []
       })
     },
-    
+
     moveEntry: (id: string, position: Position3D) => {
       set((state) => {
         const entry = state.entries.find(e => e.id === id)
@@ -311,19 +327,19 @@ export const useMindMapStore = create<MindMapState>()(
         }
       })
     },
-    
+
     selectEntry: (id: string | null) => {
       set((state) => {
         state.selectedEntryId = id
       })
     },
-    
+
     hoverEntry: (id: string | null) => {
       set((state) => {
         state.hoveredEntryId = id
       })
     },
-    
+
     // Connection actions
     addConnection: (sourceIdOrConnection: string | Connection, targetId?: string) => {
       // Handle overloaded parameters
@@ -770,7 +786,10 @@ export const initializeWithSampleData = () => {
     entries: [],
     connections: [],
     createdAt: new Date(),
-    updatedAt: new Date()
+    updatedAt: new Date(),
+    uiSettings: {
+      isHelpOverlayCollapsed: false
+    }
   })
   
   // Create sample entries
