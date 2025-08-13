@@ -964,6 +964,16 @@ export default function Scene3D() {
         e.preventDefault()
         setShowDevTools(prev => !prev)
       }
+      // Check for Ctrl/Cmd + Shift + R (rearrange root children)
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+        e.preventDefault()
+        useMindMapStore.getState().rearrangeRootChildren()
+        toast({
+          title: "Rearranging children",
+          description: "Children of the root entry are being rearranged.",
+          duration: 2000,
+        })
+      }
     }
     
     window.addEventListener('keydown', handleKeyDown)

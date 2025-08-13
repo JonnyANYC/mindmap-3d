@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import type { Entry, Connection, MindMap, Position3D } from '@/types/mindmap'
+import { calculateRearrangedPositions } from './rearrangement'
 import { DEFAULT_ENTRY_COLOR } from '@/types/mindmap'
 
 // Enable Map support in Immer
@@ -139,6 +140,7 @@ interface MindMapState {
   // Help overlay actions
   toggleHelpOverlay: () => void
   setHelpOverlayCollapsed: (collapsed: boolean) => void
+  rearrangeRootChildren: () => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -767,6 +769,36 @@ export const useMindMapStore = create<MindMapState>()(
     setHelpOverlayCollapsed: (collapsed: boolean) => {
       set((state) => {
         state.isHelpOverlayCollapsed = collapsed
+      })
+    },
+
+    rearrangeRootChildren: () => {
+      const state = get()
+      const rootEntry = state.rootEntryId ? state.getEntryById(state.rootEntryId) : null
+
+      if (!rootEntry) {
+        console.warn("No root entry found for re-arrangement.")
+        return
+      }
+
+      const children = state.getConnectedEntries(rootEntry.id)
+        .filter(entry => entry.id !== rootEntry.id) // Ensure root is not considered its own child
+
+      if (children.length === 0) {
+        console.log("Root entry has no children to re-arrange.")
+        return
+      }
+
+      const newPositions = calculateRearrangedPositions(rootEntry, children)
+
+      set((state) => {
+        newPositions.forEach((newPos, entryId) => {
+          const entry = state.entries.find(e => e.id === entryId)
+          if (entry) {
+            entry.position = newPos
+            entry.updatedAt = new Date()
+          }
+        })
       })
     }
   }))

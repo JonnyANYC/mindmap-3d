@@ -1,5 +1,5 @@
 import React from 'react'
-import { render } from '@testing-library/react'
+import { render, fireEvent, waitFor, screen, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { Entry as EntryType } from '@/types/mindmap'
 import { useMindMapStore } from '@/lib/store'
@@ -50,7 +50,7 @@ describe('Entry Component', () => {
     )
 
     const mesh = container.querySelector('mesh')
-    mesh?.props.onClick()
+    fireEvent.click(mesh)
 
     expect(mockOpenEditor).toHaveBeenCalledWith(mockEntry.id)
   })

@@ -45,6 +45,17 @@ jest.mock('@/components/Editor/WYSIWYGEditor', () => ({
   }
 }))
 
+// Mock the useMindMapStore module
+jest.mock('@/lib/store', () => ({
+  useMindMapStore: {
+    getState: jest.fn(),
+    setState: jest.fn(),
+    subscribe: jest.fn(),
+    destroy: jest.fn(),
+    getInitialState: jest.fn(),
+  },
+}))
+
 describe('WYSIWYGEditorWithAutoSave', () => {
   const mockEntryId = 'test-entry-1'
   const mockInitialContent = '<p>Initial content</p>'
@@ -320,11 +331,20 @@ describe('WYSIWYGEditorWithAutoSave', () => {
       
       fireEvent.change(textarea, { target: { value: 'New content' } })
       
+      // Check for "Saving..." immediately after change
+      await screen.findByText('Saving...')
+
       act(() => {
         jest.advanceTimersByTime(1500)
       })
       
-      expect(screen.getByText('Saving...')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
     })
 
     it('should show "Saved" after successful save', async () => {
