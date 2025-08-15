@@ -114,6 +114,10 @@ export function ExtendedHelpModal({ isOpen, onClose }: ExtendedHelpModalProps) {
                   <span className="text-gray-300">Fine-tune position</span>
                   <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Arrow keys</kbd>
                 </li>
+                <li className="flex justify-between">
+                  <span className="text-gray-300">Rearrange Children</span>
+                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Ctrl+Shift+R</kbd>
+                </li>
               </ul>
             </section>
             

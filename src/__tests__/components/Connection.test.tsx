@@ -1,7 +1,7 @@
 import React from 'react'
 import { render } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { Entry, Connection as ConnectionType } from '@/types/mindmap'
+import { Entry } from '@/types/mindmap'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 

@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, fireEvent, waitFor, screen } from '@testing-library/react'
+import { render, fireEvent, waitFor, screen, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { EditorDialog } from '@/components/Editor/EditorDialog'
 import { useMindMapStore } from '@/lib/store'
@@ -84,17 +84,26 @@ describe('EditorDialog Integration Tests', () => {
       })
     })
 
-    it('should close when ESC key is pressed', async () => {
+        it('should prevent ESC propagation when editor is open', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
-      
+      const mockListener = jest.fn()
+      document.addEventListener('keydown', mockListener, true)
+
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       render(<EditorDialog />)
       
-      fireEvent.keyDown(document, { key: 'Escape' })
-      
-      await waitFor(() => {
-        expect(store.isEditorOpen).toBe(false)
+      act(() => {
+        fireEvent.keyDown(document, { key: 'Escape' })
       })
+      
+      // The event should be prevented from propagating
+      const receivedEvent = mockListener.mock.calls[0][0]
+      expect(receivedEvent.defaultPrevented).toBe(true)
+      expect(receivedEvent.cancelBubble).toBe(true)
+      
+      document.removeEventListener('keydown', mockListener, true)
     })
 
     it('should close when clicking outside dialog', async () => {
@@ -192,8 +201,8 @@ describe('EditorDialog Integration Tests', () => {
       
       render(<EditorDialog />)
       
-      const dialogContent = screen.getByRole('dialog').querySelector('[role="dialog"] > div')
-      expect(dialogContent).toHaveClass('max-w-[800px]', 'h-[80vh]')
+      const dialogContent = screen.getByRole('dialog')
+      expect(dialogContent).toHaveClass('max-w-[800px]', 'h-[80vh]', 'flex', 'flex-col', 'p-0', 'gap-0')
     })
   })
 
@@ -216,11 +225,11 @@ describe('EditorDialog Integration Tests', () => {
       document.dispatchEvent(event)
       
       // The event should be prevented from propagating
-      expect(mockListener).toHaveBeenCalled()
       const receivedEvent = mockListener.mock.calls[0][0]
       expect(receivedEvent.defaultPrevented).toBe(true)
+      expect(receivedEvent.cancelBubble).toBe(true)
       
-      document.removeEventListener('keydown', mockListener)
+      document.removeEventListener('keydown', mockListener, true)
     })
 
     it('should not interfere with other keyboard shortcuts', () => {
@@ -230,7 +239,7 @@ describe('EditorDialog Integration Tests', () => {
       render(<EditorDialog />)
       
       const mockListener = jest.fn()
-      document.addEventListener('keydown', mockListener)
+      document.addEventListener('keydown', mockListener, true)
       
       fireEvent.keyDown(document, { key: 'Enter' })
       
@@ -238,21 +247,28 @@ describe('EditorDialog Integration Tests', () => {
       const receivedEvent = mockListener.mock.calls[0][0]
       expect(receivedEvent.defaultPrevented).toBe(false)
       
-      document.removeEventListener('keydown', mockListener)
+      document.removeEventListener('keydown', mockListener, true)
     })
   })
 
   describe('State Synchronization', () => {
     it('should update store when editor is closed', async () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      const { rerender } = render(<EditorDialog />)
+      act(() => {
+        store.openEditor(mockEntry.id)
+        rerender(<EditorDialog />)
+      })
       
-      render(<EditorDialog />)
+      await waitFor(() => {
+        expect(store.isEditorOpen).toBe(true)
+        expect(store.editingEntryId).toBe(mockEntry.id)
+      })
       
-      expect(store.isEditorOpen).toBe(true)
-      expect(store.editingEntryId).toBe(mockEntry.id)
-      
-      fireEvent.keyDown(document, { key: 'Escape' })
+      act(() => {
+        fireEvent.keyDown(document, { key: 'Escape' })
+        rerender(<EditorDialog />)
+      })
       
       await waitFor(() => {
         expect(store.isEditorOpen).toBe(false)
@@ -290,7 +306,7 @@ describe('EditorDialog Integration Tests', () => {
       unmount()
       
       // Check that listeners were cleaned up
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
+            expect(removeEventListenerSpy).toHaveBeenCalledWith(
         'keydown',
         expect.any(Function),
         true

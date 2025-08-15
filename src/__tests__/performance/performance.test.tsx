@@ -2,7 +2,6 @@ import '@testing-library/jest-dom'
 import { useMindMapStore } from '@/lib/store'
 import { Entry, Connection } from '@/types/mindmap'
 import { performance } from 'perf_hooks'
-import { act } from '@testing-library/react'
 
 // Performance metrics collector
 class PerformanceMetrics {
@@ -119,7 +118,7 @@ describe.skip('Performance Tests', () => {
   const metrics = new PerformanceMetrics()
 
   beforeEach(() => {
-    const store = useMindMapStore.getState()
+    useMindMapStore.getState()
     useMindMapStore.setState(useMindMapStore.getInitialState(), true) // Explicitly reset store
     metrics.clear()
   })

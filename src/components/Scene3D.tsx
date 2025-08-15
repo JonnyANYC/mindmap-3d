@@ -26,12 +26,14 @@ import { ExtendedHelpModal } from '@/components/ExtendedHelpModal'
 import { HelpOverlay } from '@/components/HelpOverlay'
 import { PerformanceMonitor } from '@/components/PerformanceMonitor'
 import { DebugDisplay } from '@/components/DebugDisplay'
+import { RearrangementAnimator } from '@/components/RearrangementAnimator'
 
 interface EntryProps {
   entry: EntryType
   onDragStart?: (entryId: string, isShiftKey: boolean) => void
   onDragEnd?: () => void
   isDragging?: boolean
+  entryRef: React.Ref<THREE.Group>
 }
 
 // Custom hook to determine if positive Z side is facing camera
@@ -101,10 +103,9 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
   )
 }
 
-function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
+function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef }: EntryProps) {
   const meshRef = useRef<Mesh>(null!)
   const selectedEntryId = useSelectedEntryId()
-  const hoveredEntryId = useHoveredEntryId()
   const { selectEntry, hoverEntry, toggleConnection } = useEntryActions()
   const { clearConnectionFeedback } = useConnectionActions()
   const openEditor = useMindMapStore((state) => state.openEditor)
@@ -194,7 +195,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging }: EntryProps) {
   }, [pointerDown, isDragging, dragStartPos, onDragStart, onDragEnd, entry.id])
 
   return (
-    <group position={entry.position} userData={{ isEntry: true }}>
+    <group ref={entryRef} position={entry.position} userData={{ isEntry: true }}>
       <mesh
         visible={!isDragging}
         ref={meshRef}
@@ -653,6 +654,7 @@ export default function Scene3D() {
   const { toast } = useToast()
   const [showExtendedHelp, setShowExtendedHelp] = useState(false)
   const [showDevTools, setShowDevTools] = useState(false)
+  const entryRefs = useRef(new Map<string, THREE.Group | null>());
   
   // Drag state
   const [dragState, setDragState] = useState<{
@@ -1026,11 +1028,14 @@ export default function Scene3D() {
           <Entry 
             key={entry.id} 
             entry={entry}
+            entryRef={el => entryRefs.current.set(entry.id, el)}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             isDragging={dragState.isDragging && dragState.entryId === entry.id}
           />
         ))}
+        
+        <RearrangementAnimator entryRefs={entryRefs.current} />
         
         {/* Render ghost entries during drag */}
         {dragState.isDragging && dragState.entryId && dragState.originalPosition && dragState.previewPosition && (() => {

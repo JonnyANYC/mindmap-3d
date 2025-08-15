@@ -78,6 +78,9 @@ interface MindMapState {
   
   // Help overlay state
   isHelpOverlayCollapsed: boolean
+
+  // Rearrangement state
+  rearrangementTargetPositions: Map<string, Position3D> | null
   
   // Connection status
   connectionStatus: 'connected' | 'disconnected' | 'connecting'
@@ -141,6 +144,8 @@ interface MindMapState {
   toggleHelpOverlay: () => void
   setHelpOverlayCollapsed: (collapsed: boolean) => void
   rearrangeRootChildren: () => void
+  startRearrangement: (targetPositions: Map<string, Position3D>) => void
+  clearRearrangement: () => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -173,6 +178,7 @@ export const useMindMapStore = create<MindMapState>()(
     isCameraLocked: false,
     overlays: {},
     isHelpOverlayCollapsed: false,
+    rearrangementTargetPositions: null,
     connectionStatus: 'disconnected' as const,
     
     // Entry actions
@@ -790,15 +796,18 @@ export const useMindMapStore = create<MindMapState>()(
       }
 
       const newPositions = calculateRearrangedPositions(rootEntry, children)
+      get().startRearrangement(newPositions)
+    },
 
+    startRearrangement: (targetPositions: Map<string, Position3D>) => {
       set((state) => {
-        newPositions.forEach((newPos, entryId) => {
-          const entry = state.entries.find(e => e.id === entryId)
-          if (entry) {
-            entry.position = newPos
-            entry.updatedAt = new Date()
-          }
-        })
+        state.rearrangementTargetPositions = targetPositions
+      })
+    },
+
+    clearRearrangement: () => {
+      set((state) => {
+        state.rearrangementTargetPositions = null
       })
     }
   }))

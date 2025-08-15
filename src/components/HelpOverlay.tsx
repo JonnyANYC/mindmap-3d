@@ -80,6 +80,7 @@ export function HelpOverlay() {
                   <li>🔗 Ctrl/Cmd + Click: Toggle connection</li>
                   <li>↩️ Ctrl/Cmd + Z: Undo last action</li>
                   <li>↪️ Ctrl/Cmd + Shift + Z: Redo action</li>
+                  <li>🔄 Ctrl+Shift+R: Rearrange Children</li>
                 </>
               )}
             </ul>

@@ -45,16 +45,16 @@ jest.mock('@/components/Editor/WYSIWYGEditor', () => ({
   }
 }))
 
-// Mock the useMindMapStore module
-jest.mock('@/lib/store', () => ({
-  useMindMapStore: {
-    getState: jest.fn(),
-    setState: jest.fn(),
-    subscribe: jest.fn(),
-    destroy: jest.fn(),
-    getInitialState: jest.fn(),
-  },
-}))
+jest.mock('@/lib/store', () => {
+  const { create } = jest.requireActual('zustand')
+  const { immer } = jest.requireActual('zustand/middleware/immer')
+  const store = jest.requireActual('@/lib/store')
+
+  return {
+    ...store,
+    useMindMapStore: create(immer((set, get) => store.useMindMapStore.getState()))
+  }
+})
 
 describe('WYSIWYGEditorWithAutoSave', () => {
   const mockEntryId = 'test-entry-1'
@@ -73,7 +73,8 @@ describe('WYSIWYGEditorWithAutoSave', () => {
       content: mockInitialContent,
       color: '#4CAF50',
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      isRoot: false
     })
   })
 
@@ -85,7 +86,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
   describe('Auto-save Functionality', () => {
     it('should auto-save after 1.5 seconds of inactivity', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -118,7 +121,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should reset auto-save timer on each keystroke', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -164,7 +169,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should extract summary from first line of content', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -194,7 +201,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should limit summary to 50 characters', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -222,7 +231,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should use "New Entry" as summary for empty content', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -251,7 +262,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
   describe('Manual Save', () => {
     it('should save immediately on manual save', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -280,7 +293,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should cancel auto-save timer on manual save', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
@@ -331,15 +346,23 @@ describe('WYSIWYGEditorWithAutoSave', () => {
       
       fireEvent.change(textarea, { target: { value: 'New content' } })
       
-      // Check for "Saving..." immediately after change
+      // Check for "Unsaved changes" immediately after change
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+      await act(async () => {
+        jest.advanceTimersByTime(1499) // Just before auto-save
+      })
+      expect(screen.queryByText('Saving...')).not.toBeInTheDocument()
+
+      await act(async () => {
+        jest.advanceTimersByTime(1) // Trigger auto-save
+        await Promise.resolve() // Flush microtasks
+      })
+      // Check for "Saving..." immediately after auto-save is triggered
       await screen.findByText('Saving...')
 
       act(() => {
-        jest.advanceTimersByTime(1500)
-      })
-      
-      await waitFor(() => {
-        expect(screen.getByText('Saved')).toBeInTheDocument()
+        jest.advanceTimersByTime(1500) // Allow save to complete
       })
       
       await waitFor(() => {
@@ -398,9 +421,8 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
     it('should show error message on save failure', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
-      updateEntrySpy.mockImplementation(() => {
-        throw new Error('Save failed')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise((resolve, reject) => setTimeout(() => reject(new Error('Save failed')), 100)); // Simulate async save failure
       })
       
       // Suppress console.error for this test
@@ -480,7 +502,9 @@ describe('WYSIWYGEditorWithAutoSave', () => {
   describe('Error Handling', () => {
     it('should handle HTML content extraction', async () => {
       const store = useMindMapStore.getState()
-      const updateEntrySpy = jest.spyOn(store, 'updateEntry')
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
       
       render(
         <WYSIWYGEditorWithAutoSave
