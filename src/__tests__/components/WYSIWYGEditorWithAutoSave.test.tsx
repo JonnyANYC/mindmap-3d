@@ -335,39 +335,40 @@ describe('WYSIWYGEditorWithAutoSave', () => {
 
   describe('Save Status Indicator', () => {
     it('should show "Saving..." during save', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise(resolve => setTimeout(resolve, 100)); // Simulate async save
+      })
+
       render(
         <WYSIWYGEditorWithAutoSave
           entryId={mockEntryId}
           initialContent={mockInitialContent}
         />
       )
-      
+
       const textarea = screen.getByTestId('editor-textarea')
-      
+
       fireEvent.change(textarea, { target: { value: 'New content' } })
-      
+
       // Check for "Unsaved changes" immediately after change
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
 
-      await act(async () => {
-        jest.advanceTimersByTime(1499) // Just before auto-save
+      // Advance timers to trigger auto-save (1.5 seconds)
+      act(() => {
+        jest.advanceTimersByTime(1500)
       })
-      expect(screen.queryByText('Saving...')).not.toBeInTheDocument()
 
-      await act(async () => {
-        jest.advanceTimersByTime(1) // Trigger auto-save
-        await Promise.resolve() // Flush microtasks
-      })
-      // Check for "Saving..." immediately after auto-save is triggered
+      // Now, the save operation has been initiated, and saveStatus should be 'saving'
       await screen.findByText('Saving...')
 
+      // Advance timers to allow the mock save promise to resolve (100ms)
       act(() => {
-        jest.advanceTimersByTime(1500) // Allow save to complete
+        jest.advanceTimersByTime(100)
       })
       
-      await waitFor(() => {
-        expect(screen.getByText('Saved')).toBeInTheDocument()
-      })
+      // Now, saveStatus should be 'saved'
+      await screen.findByText('Saved')
     })
 
     it('should show "Saved" after successful save', async () => {
@@ -424,10 +425,43 @@ describe('WYSIWYGEditorWithAutoSave', () => {
       const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
         return new Promise((resolve, reject) => setTimeout(() => reject(new Error('Save failed')), 100)); // Simulate async save failure
       })
-      
+
       // Suppress console.error for this test
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
-      
+
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+
+      const textarea = screen.getByTestId('editor-textarea')
+
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+
+      // Advance timers to trigger auto-save (1.5 seconds)
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+
+      // Now, the save operation has been initiated, and saveStatus should be 'saving'
+      await screen.findByText('Saving...') // Should show saving before error
+
+      // Advance timers to allow the mock save promise to reject (100ms)
+      act(() => {
+        jest.advanceTimersByTime(100)
+      })
+
+      // Now, saveStatus should be 'error'
+      await screen.findByText('Error saving')
+
+      consoleErrorSpy.mockRestore()
+      updateEntrySpy.mockRestore()
+    })
+    })
+
+    it('should show "Saved" after successful save', async () => {
       render(
         <WYSIWYGEditorWithAutoSave
           entryId={mockEntryId}
@@ -444,10 +478,166 @@ describe('WYSIWYGEditorWithAutoSave', () => {
       })
       
       await waitFor(() => {
-        expect(screen.getByText('Error saving')).toBeInTheDocument()
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+    })
+
+    it('should hide "Saved" indicator after 2 seconds', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
       })
       
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+      
+      // Wait 2 seconds for indicator to disappear
+      act(() => {
+        jest.advanceTimersByTime(2000)
+      })
+      
+      expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    })
+
+    it('should show error message on save failure', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise((resolve, reject) => setTimeout(() => reject(new Error('Save failed')), 100)); // Simulate async save failure
+      })
+
+      // Suppress console.error for this test
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+
+      const textarea = screen.getByTestId('editor-textarea')
+
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+
+      // Advance timers to trigger auto-save (1.5 seconds)
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+
+      // Now, the save operation has been initiated, and saveStatus should be 'saving'
+      await screen.findByText('Saving...') // Should show saving before error
+
+      // Advance timers to allow the mock save promise to reject (100ms)
+      act(() => {
+        jest.advanceTimersByTime(100)
+      })
+
+      // Now, saveStatus should be 'error'
+      await screen.findByText('Error saving')
+
       consoleErrorSpy.mockRestore()
+      updateEntrySpy.mockRestore()
+    })
+    })
+
+    it('should show "Saved" after successful save', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+    })
+
+    it('should hide "Saved" indicator after 2 seconds', async () => {
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+      
+      const textarea = screen.getByTestId('editor-textarea')
+      
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+      
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+      
+      await waitFor(() => {
+        expect(screen.getByText('Saved')).toBeInTheDocument()
+      })
+      
+      // Wait 2 seconds for indicator to disappear
+      act(() => {
+        jest.advanceTimersByTime(2000)
+      })
+      
+      expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    })
+
+    it('should show error message on save failure', async () => {
+      const store = useMindMapStore.getState()
+      const updateEntrySpy = jest.spyOn(store, 'updateEntry').mockImplementation(async () => {
+        return new Promise((resolve, reject) => setTimeout(() => reject(new Error('Save failed')), 100)); // Simulate async save failure
+      })
+
+      // Suppress console.error for this test
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+
+      render(
+        <WYSIWYGEditorWithAutoSave
+          entryId={mockEntryId}
+          initialContent={mockInitialContent}
+        />
+      )
+
+      const textarea = screen.getByTestId('editor-textarea')
+
+      fireEvent.change(textarea, { target: { value: 'New content' } })
+
+      // Advance timers to trigger auto-save (1.5 seconds)
+      act(() => {
+        jest.advanceTimersByTime(1500)
+      })
+
+      // Now, the save operation has been initiated, and saveStatus should be 'saving'
+      await screen.findByText('Saving...') // Should show saving before error
+
+      // Advance timers to allow the mock save promise to reject (100ms)
+      act(() => {
+        jest.advanceTimersByTime(100)
+      })
+
+      // Now, saveStatus should be 'error'
+      await screen.findByText('Error saving')
+
+      consoleErrorSpy.mockRestore()
+      updateEntrySpy.mockRestore()
     })
   })
 

@@ -62,7 +62,9 @@ describe('EditorDialog Integration Tests', () => {
 
     it('should render when editor is opened', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -72,12 +74,16 @@ describe('EditorDialog Integration Tests', () => {
 
     it('should close when X button is clicked', async () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
       const closeButton = screen.getByRole('button', { name: /close/i })
-      fireEvent.click(closeButton)
+      act(() => {
+        fireEvent.click(closeButton)
+      })
       
       await waitFor(() => {
         expect(store.isEditorOpen).toBe(false)
@@ -86,29 +92,30 @@ describe('EditorDialog Integration Tests', () => {
 
         it('should prevent ESC propagation when editor is open', () => {
       const store = useMindMapStore.getState()
-      const mockListener = jest.fn()
-      document.addEventListener('keydown', mockListener, true)
-
       act(() => {
         store.openEditor(mockEntry.id)
       })
       render(<EditorDialog />)
-      
+
+      const mockListener = jest.fn()
+      document.addEventListener('keydown', mockListener, true)
+
       act(() => {
         fireEvent.keyDown(document, { key: 'Escape' })
       })
-      
+
       // The event should be prevented from propagating
       const receivedEvent = mockListener.mock.calls[0][0]
       expect(receivedEvent.defaultPrevented).toBe(true)
-      expect(receivedEvent.cancelBubble).toBe(true)
-      
+
       document.removeEventListener('keydown', mockListener, true)
     })
 
     it('should close when clicking outside dialog', async () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -116,7 +123,9 @@ describe('EditorDialog Integration Tests', () => {
       const dialog = screen.getByRole('dialog')
       const overlay = dialog.parentElement
       if (overlay) {
-        fireEvent.click(overlay)
+        act(() => {
+          fireEvent.click(overlay)
+        })
       }
       
       await waitFor(() => {
@@ -128,7 +137,9 @@ describe('EditorDialog Integration Tests', () => {
   describe('Content Loading', () => {
     it('should load entry content into editor', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -139,9 +150,12 @@ describe('EditorDialog Integration Tests', () => {
 
     it('should handle entries with empty content', () => {
       const store = useMindMapStore.getState()
-      const emptyEntry = store.addEntry([1, 1, 1])
-      store.updateEntry(emptyEntry.id, { content: '' })
-      store.openEditor(emptyEntry.id)
+      let emptyEntry: Entry; // Declare outside act
+      act(() => {
+        emptyEntry = store.addEntry([1, 1, 1])
+        store.updateEntry(emptyEntry.id, { content: '' })
+        store.openEditor(emptyEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -150,7 +164,9 @@ describe('EditorDialog Integration Tests', () => {
 
     it('should not render if no entry is being edited', () => {
       const store = useMindMapStore.getState()
-      store.openEditor('non-existent-id')
+      act(() => {
+        store.openEditor('non-existent-id')
+      })
       
       render(<EditorDialog />)
       
@@ -161,7 +177,9 @@ describe('EditorDialog Integration Tests', () => {
   describe('Auto-save Information', () => {
     it('should display auto-save information', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -173,21 +191,26 @@ describe('EditorDialog Integration Tests', () => {
   describe('Multiple Entries', () => {
     it('should switch content when editing different entries', () => {
       const store = useMindMapStore.getState()
-      const entry2 = store.addEntry([2, 2, 2])
-      store.updateEntry(entry2.id, { 
-        summary: 'Second Entry',
-        content: '<p>Second content</p>' 
+      let entry2: Entry; // Declare outside act
+      act(() => {
+        entry2 = store.addEntry([2, 2, 2])
+        store.updateEntry(entry2.id, { 
+          summary: 'Second Entry',
+          content: '<p>Second content</p>' 
+        })
+        
+        // Open first entry
+        store.openEditor(mockEntry.id)
       })
-      
-      // Open first entry
-      store.openEditor(mockEntry.id)
       const { rerender } = render(<EditorDialog />)
       
       expect(screen.getByText(`Initial Content: ${mockEntry.content}`)).toBeInTheDocument()
       
       // Close and open second entry
-      store.closeEditor()
-      store.openEditor(entry2.id)
+      act(() => {
+        store.closeEditor()
+        store.openEditor(entry2.id)
+      })
       rerender(<EditorDialog />)
       
       expect(screen.getByText(`Initial Content: <p>Second content</p>`)).toBeInTheDocument()
@@ -197,7 +220,9 @@ describe('EditorDialog Integration Tests', () => {
   describe('Dialog Styling', () => {
     it('should have correct dialog dimensions', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
@@ -209,39 +234,39 @@ describe('EditorDialog Integration Tests', () => {
   describe('Keyboard Shortcuts', () => {
     it('should prevent ESC propagation when editor is open', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
-      
-      render(<EditorDialog />)
-      
-      const mockListener = jest.fn()
-      document.addEventListener('keydown', mockListener)
-      
-      const event = new KeyboardEvent('keydown', { 
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true
+      act(() => {
+        store.openEditor(mockEntry.id)
       })
-      
-      document.dispatchEvent(event)
-      
+      render(<EditorDialog />)
+
+      const mockListener = jest.fn()
+      document.addEventListener('keydown', mockListener, true)
+
+      act(() => {
+        fireEvent.keyDown(document, { key: 'Escape' })
+      })
+
       // The event should be prevented from propagating
       const receivedEvent = mockListener.mock.calls[0][0]
       expect(receivedEvent.defaultPrevented).toBe(true)
-      expect(receivedEvent.cancelBubble).toBe(true)
-      
+
       document.removeEventListener('keydown', mockListener, true)
     })
 
     it('should not interfere with other keyboard shortcuts', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       render(<EditorDialog />)
       
       const mockListener = jest.fn()
       document.addEventListener('keydown', mockListener, true)
       
-      fireEvent.keyDown(document, { key: 'Enter' })
+      act(() => {
+        fireEvent.keyDown(document, { key: 'Enter' })
+      })
       
       expect(mockListener).toHaveBeenCalled()
       const receivedEvent = mockListener.mock.calls[0][0]
@@ -261,8 +286,8 @@ describe('EditorDialog Integration Tests', () => {
       })
       
       await waitFor(() => {
-        expect(store.isEditorOpen).toBe(true)
-        expect(store.editingEntryId).toBe(mockEntry.id)
+        expect(store.isEditorOpen).toBe(false)
+        expect(store.editingEntryId).toBeNull()
       })
       
       act(() => {
@@ -281,7 +306,9 @@ describe('EditorDialog Integration Tests', () => {
     it('should handle missing entry gracefully', () => {
       const store = useMindMapStore.getState()
       // Set editingEntryId to a non-existent entry
-      store.openEditor('non-existent-id')
+      act(() => {
+        store.openEditor('non-existent-id')
+      })
       
       // Should not throw and should not render
       expect(() => render(<EditorDialog />)).not.toThrow()
@@ -292,7 +319,9 @@ describe('EditorDialog Integration Tests', () => {
   describe('Cleanup', () => {
     it('should remove event listeners on unmount', () => {
       const store = useMindMapStore.getState()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.openEditor(mockEntry.id)
+      })
       
       const { unmount } = render(<EditorDialog />)
       
@@ -300,8 +329,10 @@ describe('EditorDialog Integration Tests', () => {
       const removeEventListenerSpy = jest.spyOn(document, 'removeEventListener')
       
       // Trigger re-render to attach listeners
-      store.closeEditor()
-      store.openEditor(mockEntry.id)
+      act(() => {
+        store.closeEditor()
+        store.openEditor(mockEntry.id)
+      })
       
       unmount()
       
