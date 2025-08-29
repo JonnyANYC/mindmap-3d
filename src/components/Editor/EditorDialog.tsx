@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { WYSIWYGEditorWithAutoSave } from './WYSIWYGEditorWithAutoSave'
@@ -60,6 +61,9 @@ export function EditorDialog() {
       <DialogContent className="max-w-[800px] h-[80vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b">
           <DialogTitle>Edit Entry</DialogTitle>
+          <DialogDescription>
+            Modify the content of your mind map entry here. Changes are saved automatically.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto px-6 py-4">

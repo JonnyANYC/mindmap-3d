@@ -24,6 +24,7 @@ export function MindMapSelector() {
   const [mindMaps, setMindMaps] = useState<DbMindMap[]>([])
   const [loading, setLoading] = useState(false)
   const [newMapName, setNewMapName] = useState('')
+  const setInputFocused = useMindMapStore(state => state.setInputFocused)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const { toast } = useToast()
   const { status } = useStorage()
@@ -82,7 +83,7 @@ export function MindMapSelector() {
     if (!storageService.isPersistentStorage()) {
       // Create session-only mind map
       const store = useMindMapStore.getState()
-      store.clearMindMap()
+      store.clearMindMap(newMapName)
       store.loadMindMap({
         id: `session-${Date.now()}`,
         name: newMapName,
@@ -118,6 +119,16 @@ export function MindMapSelector() {
         }
       }
       loadMaps()
+      // Also update the store
+      const store = useMindMapStore.getState()
+      store.loadMindMap({
+        id: result.id,
+        name: newMapName,
+        entries: [],
+        connections: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
     } else {
       toast({
         title: 'Error creating mind map',
@@ -145,6 +156,10 @@ export function MindMapSelector() {
         }
       }
       loadMaps()
+      // also clear the store if the deleted map was the current one
+      if (currentMindMapId === id) {
+        clearMindMap()
+      }
     } else {
       toast({
         title: 'Error deleting mind map',
@@ -179,6 +194,8 @@ export function MindMapSelector() {
                 value={newMapName}
                 onChange={(e) => setNewMapName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleCreateMindMap()}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
                 className="col-span-3"
                 placeholder="My Mind Map"
               />
@@ -226,7 +243,7 @@ export function MindMapSelector() {
                     }`}
                   >
                     <div>
-                      <h4 className="font-medium">{map.title}</h4>
+                      <h4 className="font-medium">{map.name}</h4>
                       <p className="text-sm text-neutral-500">
                         Last updated: {new Date(map.updated_at).toLocaleString()}
                       </p>
@@ -245,7 +262,7 @@ export function MindMapSelector() {
                         size="sm"
                         variant="outline"
                         className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                        onClick={() => handleDeleteMindMap(map.id, map.title)}
+                        onClick={() => handleDeleteMindMap(map.id, map.name)}
                       >
                         Delete
                       </Button>

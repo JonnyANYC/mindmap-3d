@@ -14,7 +14,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
 export interface DbMindMap {
   id: string
   user_id?: string
-  title: string
+  name: string
   description?: string
   is_deleted: boolean
   created_at: string
@@ -66,7 +66,7 @@ export const mindMapService = {
         .upsert({
           id: mindMap.id,
           user_id: user?.id || null,
-          title: mindMap.name,
+          name: mindMap.name,
           description: '',
           is_deleted: false,
           updated_at: new Date().toISOString()
@@ -166,7 +166,7 @@ export const mindMapService = {
       // Convert to MindMap type
       const mindMap: MindMap = {
         id: mapData.id,
-        name: mapData.title,
+        name: mapData.name,
         entries: (entriesData || []).map(e => ({
           id: e.id,
           position: [e.position_x, e.position_y, e.position_z] as [number, number, number],
@@ -251,7 +251,7 @@ export const mindMapService = {
         .from('mindmaps')
         .insert({
           user_id: user?.id || null,
-          title: name,
+          name: name,
           description: '',
           is_deleted: false
         })

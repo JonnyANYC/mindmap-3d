@@ -1,0 +1,1 @@
+ALTER TABLE mindmaps RENAME COLUMN title TO name;

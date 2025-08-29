@@ -1,6 +1,8 @@
 import { useMindMapStore } from '@/lib/store'
 import { Entry, Connection, MindMap } from '@/types/mindmap'
 
+jest.useFakeTimers()
+
 describe('MindMapStore', () => {
   beforeEach(() => {
     // Reset store before each test
@@ -654,6 +656,41 @@ describe('MindMapStore', () => {
       // The help overlay state should reflect the current state
       const currentState = useMindMapStore.getState()
       expect(mindMapData.uiSettings?.isHelpOverlayCollapsed).toBe(currentState.isHelpOverlayCollapsed)
+    })
+
+    it('should save and load root entry id', () => {
+      const store = useMindMapStore.getState()
+      
+      store.addEntry()
+      const entry2 = store.addEntry()
+      store.setRootEntry(entry2.id)
+
+      const mindMapData = store.getMindMapData()
+      store.clearMindMap()
+      store.loadMindMap(mindMapData)
+
+      const updatedState = useMindMapStore.getState()
+      expect(updatedState.rootEntryId).toBe(entry2.id)
+    })
+
+    it('should persist root entry id with local storage', () => {
+      const store = useMindMapStore.getState()
+      
+      store.addEntry()
+      const entry2 = store.addEntry()
+      store.setRootEntry(entry2.id)
+
+      const mindMapData = store.getMindMapData()
+      
+      // Simulate saving to and loading from local storage
+      const serialized = JSON.stringify(mindMapData)
+      const deserialized = JSON.parse(serialized)
+
+      store.clearMindMap()
+      store.loadMindMap(deserialized)
+
+      const updatedState = useMindMapStore.getState()
+      expect(updatedState.rootEntryId).toBe(entry2.id)
     })
   })
 

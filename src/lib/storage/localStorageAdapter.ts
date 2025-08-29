@@ -39,6 +39,7 @@ export class LocalStorageAdapter implements StorageAdapter {
   private serializeMindMap(mindMap: MindMap): string {
     return JSON.stringify({
       ...mindMap,
+      rootEntryId: mindMap.rootEntryId,
       entries: mindMap.entries.map(e => ({
         ...e,
         createdAt: e.createdAt.toISOString(),
@@ -57,6 +58,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     const parsed = JSON.parse(data)
     return {
       ...parsed,
+      rootEntryId: parsed.rootEntryId,
       entries: parsed.entries.map((e: { createdAt: string; updatedAt: string; [key: string]: unknown }) => ({
         ...e,
         createdAt: new Date(e.createdAt),
@@ -114,7 +116,7 @@ export class LocalStorageAdapter implements StorageAdapter {
           mindMaps.push({
             id: mindMap.id,
             user_id: null,
-            title: mindMap.name,
+            name: mindMap.name,
             description: '',
             is_deleted: false,
             created_at: mindMap.createdAt.toISOString(),

@@ -1,9 +1,11 @@
+'use client'
+
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import type { Entry, Connection, MindMap, Position3D } from '@/types/mindmap'
-import { calculateRearrangedPositions } from './rearrangement'
+import { rearrangeMindMap } from './rearrangement'
 import { DEFAULT_ENTRY_COLOR } from '@/types/mindmap'
 
 // Enable Map support in Immer
@@ -47,6 +49,7 @@ interface MindMapState {
   hoveredEntryId: string | null
   mindMapId: string | null
   currentMindMapId: string | null
+  name: string | null
   rootEntryId: string | null
   
   // Connection feedback
@@ -78,6 +81,7 @@ interface MindMapState {
   
   // Help overlay state
   isHelpOverlayCollapsed: boolean
+  isInputFocused: boolean
 
   // Rearrangement state
   rearrangementTargetPositions: Map<string, Position3D> | null
@@ -143,9 +147,10 @@ interface MindMapState {
   // Help overlay actions
   toggleHelpOverlay: () => void
   setHelpOverlayCollapsed: (collapsed: boolean) => void
-  rearrangeRootChildren: () => void
+  rearrangeMindMap: (onComplete?: () => void) => void
   startRearrangement: (targetPositions: Map<string, Position3D>) => void
   clearRearrangement: () => void
+  setInputFocused: (isFocused: boolean) => void
 }
 
 const getRandomPosition = (): Position3D => {
@@ -164,6 +169,7 @@ export const useMindMapStore = create<MindMapState>()(
     hoveredEntryId: null,
     mindMapId: null,
     currentMindMapId: null,
+    name: null,
     rootEntryId: null,
     connectionFeedback: null,
     connectionHistory: [],
@@ -178,6 +184,7 @@ export const useMindMapStore = create<MindMapState>()(
     isCameraLocked: false,
     overlays: {},
     isHelpOverlayCollapsed: false,
+    isInputFocused: false,
     rearrangementTargetPositions: null,
     connectionStatus: 'disconnected' as const,
     
@@ -571,13 +578,14 @@ export const useMindMapStore = create<MindMapState>()(
     },
     
     // Utility actions
-    clearMindMap: () => {
+    clearMindMap: (name?: string) => {
       set((state) => {
         state.entries = []
         state.connections = []
         state.selectedEntryId = null
         state.hoveredEntryId = null
         state.mindMapId = null
+        state.name = name || null
       })
     },
     
@@ -587,6 +595,8 @@ export const useMindMapStore = create<MindMapState>()(
         state.connections = data.connections
         state.mindMapId = data.id
         state.currentMindMapId = data.id
+        state.name = data.name
+        state.rootEntryId = data.rootEntryId
         state.selectedEntryId = null
         state.hoveredEntryId = null
         // Load UI settings
@@ -623,16 +633,18 @@ export const useMindMapStore = create<MindMapState>()(
       return id ? get().getEntryById(id) : undefined
     },
     
-    getMindMapData: () => {
+        getMindMapData: () => {
+      const state = get();
       return {
-        id: get().mindMapId || uuidv4(),
-        name: 'Untitled Mind Map',
-        entries: get().entries,
-        connections: get().connections,
+        id: state.mindMapId || uuidv4(),
+        name: state.name || 'Untitled Mind Map',
+        entries: state.entries,
+        connections: state.connections,
+        rootEntryId: state.rootEntryId,
         createdAt: new Date(),
         updatedAt: new Date(),
         uiSettings: {
-          isHelpOverlayCollapsed: get().isHelpOverlayCollapsed
+          isHelpOverlayCollapsed: state.isHelpOverlayCollapsed
         }
       }
     },
@@ -778,36 +790,51 @@ export const useMindMapStore = create<MindMapState>()(
       })
     },
 
-    rearrangeRootChildren: () => {
+    rearrangeMindMap: (onComplete?: () => void) => {
       const state = get()
       const rootEntry = state.rootEntryId ? state.getEntryById(state.rootEntryId) : null
 
       if (!rootEntry) {
         console.warn("No root entry found for re-arrangement.")
+        onComplete?.()
         return
       }
 
-      const children = state.getConnectedEntries(rootEntry.id)
-        .filter(entry => entry.id !== rootEntry.id) // Ensure root is not considered its own child
-
-      if (children.length === 0) {
-        console.log("Root entry has no children to re-arrange.")
-        return
-      }
-
-      const newPositions = calculateRearrangedPositions(rootEntry, children)
-      get().startRearrangement(newPositions)
+      // This can be a long-running task, so we do it asynchronously
+      setTimeout(() => {
+        const { newPositions, updatedEntries } = rearrangeMindMap(rootEntry, state.entries, state.connections, (progress) => {
+          get().updateRearrangementProgress(progress)
+        })
+        set((state) => {
+          state.entries = updatedEntries
+        })
+        get().startRearrangement(newPositions)
+        onComplete?.()
+      }, 50) // 50ms delay to allow UI to update with loading state
     },
 
     startRearrangement: (targetPositions: Map<string, Position3D>) => {
       set((state) => {
         state.rearrangementTargetPositions = targetPositions
+        state.rearrangementProgress = 0
+      })
+    },
+
+    updateRearrangementProgress: (progress: number) => {
+      set((state) => {
+        state.rearrangementProgress = progress
       })
     },
 
     clearRearrangement: () => {
       set((state) => {
         state.rearrangementTargetPositions = null
+        state.rearrangementProgress = 0
+      })
+    },
+    setInputFocused: (isFocused: boolean) => {
+      set((state) => {
+        state.isInputFocused = isFocused
       })
     }
   }))

@@ -36,24 +36,7 @@ interface EntryProps {
   entryRef: React.Ref<THREE.Group>
 }
 
-// Custom hook to determine if positive Z side is facing camera
-function useIsFacingCamera(position: Position3D) {
-  const { camera } = useThree()
-  const [isFacingCamera, setIsFacingCamera] = useState(true)
-  
-  useFrame(() => {
-    // Get vector from entry to camera
-    const entryPos = new Vector3(...position)
-    const cameraToEntry = entryPos.clone().sub(camera.position)
-    
-    // Check if the positive Z normal is facing towards the camera
-    // If dot product is negative, positive Z is facing camera
-    const dotProduct = cameraToEntry.dot(new Vector3(0, 0, 1))
-    setIsFacingCamera(dotProduct < 0)
-  })
-  
-  return isFacingCamera
-}
+
 
 interface GhostEntryProps {
   position: Position3D
@@ -63,8 +46,7 @@ interface GhostEntryProps {
   hideBackText?: boolean
 }
 
-function GhostEntry({ position, opacity, color, summary, hideBackText = false }: GhostEntryProps) {
-  const isFrontFacingCamera = useIsFacingCamera(position)
+function GhostEntry({ position, opacity, color, summary, isFacingCamera, hideBackText = false }: GhostEntryProps) {
   
   return (
     <group position={position}>
@@ -73,7 +55,7 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
         <meshStandardMaterial color={color} transparent opacity={opacity} />
       </mesh>
       <Text
-        visible={!hideBackText || isFrontFacingCamera}
+        visible={!hideBackText || isFacingCamera}
         position={[0, 0, 0.026]}
         fontSize={0.15}
         color="white"
@@ -86,7 +68,7 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
         {summary}
       </Text>
       <Text
-        visible={!hideBackText || !isFrontFacingCamera}
+        visible={!hideBackText || !isFacingCamera}
         position={[0, 0, -0.026]}
         fontSize={0.15}
         color="white"
@@ -103,13 +85,12 @@ function GhostEntry({ position, opacity, color, summary, hideBackText = false }:
   )
 }
 
-function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef }: EntryProps) {
+function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef, isFacingCamera, lodLevel }: EntryProps) {
   const meshRef = useRef<Mesh>(null!)
   const selectedEntryId = useSelectedEntryId()
   const { selectEntry, hoverEntry, toggleConnection } = useEntryActions()
   const { clearConnectionFeedback } = useConnectionActions()
   const openEditor = useMindMapStore((state) => state.openEditor)
-  const { camera } = useThree()
   
   const isSelected = useSelectedEntryId() === entry.id
   const isHovered = useHoveredEntryId() === entry.id
@@ -124,32 +105,10 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef }: EntryPro
         ? HOVERED_ENTRY_COLOR 
         : entry.color || DEFAULT_ENTRY_COLOR
   
-  // LOD state
-  const [lodLevel, setLodLevel] = useState<'near' | 'far'>('near')
-
   // Drag detection state
   const [dragStartPos, setDragStartPos] = useState<[number, number] | null>(null)
   const [pointerDown, setPointerDown] = useState(false)
   const dragThreshold = 5 // pixels
-  
-  // Determine which text to show during drag
-  const isFrontFacingCamera = useIsFacingCamera(entry.position)
-  
-  // Update LOD based on distance from camera
-  useFrame(() => {
-    const entryPos = new Vector3(...entry.position)
-    const distance = camera.position.distanceTo(entryPos)
-    
-    // Define LOD thresholds
-    const FAR_THRESHOLD = 15
-    
-    // Update LOD level
-    if (distance > FAR_THRESHOLD && lodLevel !== 'far') {
-      setLodLevel('far')
-    } else if (distance <= FAR_THRESHOLD && lodLevel !== 'near') {
-      setLodLevel('near')
-    }
-  })
   
   // Handle global pointer events for drag
   useEffect(() => {
@@ -246,7 +205,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef }: EntryPro
         <meshStandardMaterial color={color} />
       </mesh>
       <Text
-        visible={(!isDragging || isFrontFacingCamera) && lodLevel === 'near'}
+        visible={(!isDragging || isFacingCamera) && lodLevel === 'near'}
         position={[0, 0, 0.026]}
         fontSize={0.15}
         color="white"
@@ -260,7 +219,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef }: EntryPro
         {entry.summary}
       </Text>
       <Text
-        visible={(!isDragging || !isFrontFacingCamera) && lodLevel === 'near'}
+        visible={(!isDragging || !isFacingCamera) && lodLevel === 'near'}
         position={[0, 0, -0.026]}
         fontSize={0.15}
         color="white"
@@ -327,11 +286,9 @@ interface ConnectionProps {
   targetEntry: EntryType
 }
 
-function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
+function Connection({ sourceEntry, targetEntry, opacity }: ConnectionProps) {
   const meshRef = useRef<Mesh>(null!)
-  const { camera, raycaster, scene } = useThree()
-  const [opacity, setOpacity] = useState(1)
-  const [isVisible, setIsVisible] = useState(true)
+  const [isVisible] = useState(true)
   
   // Calculate connection geometry with smart surface selection
   const { position, rotation, length } = useMemo(() => {
@@ -398,99 +355,6 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
     }
   }, [sourceEntry.position, targetEntry.position])
   
-  // Create frustum once and reuse
-  const frustumRef = useRef(new THREE.Frustum())
-  const cameraMatrixRef = useRef(new THREE.Matrix4())
-  const frameCountRef = useRef(0)
-  
-  // Update opacity based on occlusion with improved detection and frustum culling
-  useFrame(() => {
-    if (!meshRef.current) return
-    
-    // Update frustum with current camera matrices
-    cameraMatrixRef.current.multiplyMatrices(
-      camera.projectionMatrix,
-      camera.matrixWorldInverse
-    )
-    frustumRef.current.setFromProjectionMatrix(cameraMatrixRef.current)
-    
-    // Create bounding spheres for entries
-    const sourceSphere = new THREE.Sphere(new Vector3(...sourceEntry.position), 0.7)
-    const targetSphere = new THREE.Sphere(new Vector3(...targetEntry.position), 0.7)
-    
-    // Check if either entry is visible
-    const sourceInFrustum = frustumRef.current.intersectsSphere(sourceSphere)
-    const targetInFrustum = frustumRef.current.intersectsSphere(targetSphere)
-    
-    // Hide connection if both entries are outside frustum
-    if (!sourceInFrustum && !targetInFrustum) {
-      setIsVisible(false)
-      return
-    } else {
-      setIsVisible(true)
-    }
-    
-    // Skip occlusion calculation if connection is not visible
-    if (!isVisible) return
-    
-    // Throttle occlusion checks - only check every 3rd frame
-    frameCountRef.current++
-    if (frameCountRef.current % 3 !== 0) return
-    
-    const cameraPos = camera.position.clone()
-    
-    // Cast rays from camera to multiple points along the connection
-    const checkPoints = 3 // Reduced from 5 for better performance
-    let occludedCount = 0
-    
-    for (let i = 0; i <= checkPoints; i++) {
-      const t = i / checkPoints
-      const checkPoint = new Vector3(
-        sourceEntry.position[0] * (1 - t) + targetEntry.position[0] * t,
-        sourceEntry.position[1] * (1 - t) + targetEntry.position[1] * t,
-        sourceEntry.position[2] * (1 - t) + targetEntry.position[2] * t
-      )
-      
-      // Set up raycaster from camera to check point
-      const direction = checkPoint.clone().sub(cameraPos).normalize()
-      raycaster.set(cameraPos, direction)
-      
-      // Check for intersections with entry boxes
-      const intersects = raycaster.intersectObjects(scene.children, true)
-      
-      // Check if any entry is blocking the view
-      for (const intersect of intersects) {
-        const distance = cameraPos.distanceTo(checkPoint)
-        if (intersect.distance < distance && intersect.object.type === 'Mesh') {
-          // Check if the intersected object is an entry (Box)
-          const parent = intersect.object.parent
-          if (parent && parent.userData?.isEntry) {
-            occludedCount++
-            break
-          }
-        }
-      }
-    }
-    
-    // Calculate opacity based on occlusion percentage
-    const occlusionRatio = occludedCount / (checkPoints + 1)
-    let targetOpacity = 1
-    
-    if (occlusionRatio > 0.6) {
-      targetOpacity = 0.25 // Heavily occluded (25% per PRD)
-    } else if (occlusionRatio > 0.3) {
-      targetOpacity = 0.5 // Partially occluded
-    } else if (occlusionRatio > 0) {
-      targetOpacity = 0.75 // Slightly occluded
-    }
-    
-    // Smooth opacity transitions with larger threshold
-    const opacityDiff = targetOpacity - opacity
-    if (Math.abs(opacityDiff) > 0.05) {
-      setOpacity(opacity + opacityDiff * 0.2)
-    }
-  })
-  
   return (
     <DreiCylinder
       ref={meshRef}
@@ -509,46 +373,7 @@ function Connection({ sourceEntry, targetEntry }: ConnectionProps) {
   )
 }
 
-function CameraController({ 
-  cameraRef, 
-  onCameraMove 
-}: { 
-  cameraRef: { current: Camera | null }
-  onCameraMove?: () => void 
-}) {
-  const { camera } = useThree()
-  const previousPosition = useRef(new Vector3())
-  const previousRotation = useRef(new Vector3())
-  
-  useFrame(() => {
-    cameraRef.current = camera
-    
-    // Check for camera movement
-    if (onCameraMove) {
-      const positionThreshold = 0.1
-      const rotationThreshold = 0.01
-      
-      const positionDelta = camera.position.distanceTo(previousPosition.current)
-      const rotationDelta = new Vector3(
-        camera.rotation.x,
-        camera.rotation.y,
-        camera.rotation.z
-      ).distanceTo(previousRotation.current)
-      
-      if (positionDelta > positionThreshold || rotationDelta > rotationThreshold) {
-        onCameraMove()
-        previousPosition.current.copy(camera.position)
-        previousRotation.current.set(
-          camera.rotation.x,
-          camera.rotation.y,
-          camera.rotation.z
-        )
-      }
-    }
-  })
-  
-  return null
-}
+
 
 function DragController({
   dragState,
@@ -641,6 +466,81 @@ function DragController({
   return null
 }
 
+function FrameProcessor({ setEntryRenderInfo, setConnectionOpacities }) {
+  const { camera, scene } = useThree();
+  const entries = useEntries();
+  const connections = useConnections();
+  const entryRenderInfoRef = useRef(new Map());
+  const connectionOpacitiesRef = useRef(new Map());
+
+  useFrame(() => {
+    const newEntryRenderInfo = new Map<string, { isFacingCamera: boolean; lodLevel: 'near' | 'far' }>();
+    const newConnectionOpacities = new Map<string, number>();
+    const cameraPosition = camera.position;
+    const FAR_THRESHOLD = 15;
+
+    let entryInfoChanged = false;
+    entries.forEach(entry => {
+      const entryPos = new Vector3(...entry.position);
+      const distance = cameraPosition.distanceTo(entryPos);
+      const cameraToEntry = entryPos.clone().sub(cameraPosition);
+      const dotProduct = cameraToEntry.dot(new Vector3(0, 0, 1));
+      const isFacingCamera = dotProduct < 0;
+      const lodLevel = distance > FAR_THRESHOLD ? 'far' : 'near';
+      newEntryRenderInfo.set(entry.id, { isFacingCamera, lodLevel });
+
+      const oldInfo = entryRenderInfoRef.current.get(entry.id);
+      if (!oldInfo || oldInfo.isFacingCamera !== isFacingCamera || oldInfo.lodLevel !== lodLevel) {
+        entryInfoChanged = true;
+      }
+    });
+
+    if (entryInfoChanged || newEntryRenderInfo.size !== entryRenderInfoRef.current.size) {
+      setEntryRenderInfo(newEntryRenderInfo);
+      entryRenderInfoRef.current = newEntryRenderInfo;
+    }
+
+    const raycaster = new THREE.Raycaster();
+    let connectionOpacitiesChanged = false;
+    connections.forEach(connection => {
+      const sourceEntry = entries.find(e => e.id === connection.sourceId)
+      const targetEntry = entries.find(e => e.id === connection.targetId)
+      if (!sourceEntry || !targetEntry) return;
+
+      const start = new Vector3(...sourceEntry.position);
+      const end = new Vector3(...targetEntry.position);
+      const midPoint = new Vector3().addVectors(start, end).multiplyScalar(0.5);
+      const direction = new Vector3().subVectors(midPoint, camera.position).normalize();
+      raycaster.set(camera.position, direction);
+      const intersects = raycaster.intersectObjects(scene.children, true);
+
+      let occluded = false;
+      if (intersects.length > 0) {
+        const intersection = intersects[0];
+        const distanceToIntersection = intersection.distance;
+        const distanceToMidpoint = camera.position.distanceTo(midPoint);
+        if (distanceToIntersection < distanceToMidpoint) {
+          occluded = true;
+        }
+      }
+
+      const newOpacity = occluded ? 0.25 : 1;
+      newConnectionOpacities.set(connection.id, newOpacity);
+
+      if (connectionOpacitiesRef.current.get(connection.id) !== newOpacity) {
+        connectionOpacitiesChanged = true;
+      }
+    });
+
+    if (connectionOpacitiesChanged || newConnectionOpacities.size !== connectionOpacitiesRef.current.size) {
+      setConnectionOpacities(newConnectionOpacities);
+      connectionOpacitiesRef.current = newConnectionOpacities;
+    }
+  });
+
+  return null;
+}
+
 export default function Scene3D() {
   const entries = useEntries()
   const connections = useConnections()
@@ -653,8 +553,11 @@ export default function Scene3D() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   const [showExtendedHelp, setShowExtendedHelp] = useState(false)
+  const isInputFocused = useMindMapStore(state => state.isInputFocused)
   const [showDevTools, setShowDevTools] = useState(false)
   const entryRefs = useRef(new Map<string, THREE.Group | null>());
+  const [entryRenderInfo, setEntryRenderInfo] = useState<Map<string, { isFacingCamera: boolean; lodLevel: 'near' | 'far' }>>(new Map());
+  const [connectionOpacities, setConnectionOpacities] = useState<Map<string, number>>(new Map());
   
   // Drag state
   const [dragState, setDragState] = useState<{
@@ -714,11 +617,6 @@ export default function Scene3D() {
     }
   }, [dragState, moveEntry])
 
-  // Focus the container on mount to ensure keyboard events work
-  useEffect(() => {
-    containerRef.current?.focus()
-  }, [])
-
   const handleAddEntry = useCallback(() => {
     if (!cameraRef.current) {
       // Fallback to random position if camera not ready
@@ -765,6 +663,7 @@ export default function Scene3D() {
   // Handle keyboard shortcuts for undo/redo, ESC cancellation, and Delete
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isInputFocused) return
       // Don't handle shortcuts when editor is open
       const isEditorOpen = useMindMapStore.getState().isEditorOpen
       if (isEditorOpen && e.key !== 'Escape') return
@@ -966,31 +865,29 @@ export default function Scene3D() {
         e.preventDefault()
         setShowDevTools(prev => !prev)
       }
-      // Check for Ctrl/Cmd + Shift + R (rearrange root children)
-      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+      // Check for Shift + P (rearrange mind map)
+      else if (e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'p') {
         e.preventDefault()
-        useMindMapStore.getState().rearrangeRootChildren()
-        toast({
-          title: "Rearranging children",
-          description: "Children of the root entry are being rearranged.",
-          duration: 2000,
+        const { dismiss } = toast({
+          title: "Rearranging Mind Map",
+          description: "Please wait...",
+        })
+        useMindMapStore.getState().rearrangeMindMap(() => {
+          dismiss()
+          toast({
+            title: "Rearranging Complete",
+            description: "The mind map has been successfully rearranged.",
+          })
         })
       }
     }
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast, handleAddEntry, addEntry, setShowExtendedHelp, showExtendedHelp, setShowDevTools])
-  
-  // Determine cursor style based on drag state
-  const getCursorStyle = () => {
-    if (!dragState.isDragging) return 'auto'
-    if (dragState.isShiftDrag) return 'ns-resize'
-    return 'move'
-  }
-  
+  }, [undoConnection, redoConnection, dragState, moveEntry, handleDragEnd, selectedEntryId, deleteEntry, entries, toast, handleAddEntry, addEntry, setShowExtendedHelp, showExtendedHelp, setShowDevTools, isInputFocused])
+
   return (
-    <div ref={containerRef} className="w-full h-full bg-gray-900 relative" style={{ cursor: getCursorStyle() }} tabIndex={0}>
+    <div ref={containerRef} className="w-full h-full bg-gray-900 relative" tabIndex={0}>
       <Canvas 
         onPointerMissed={() => {
           // Only deselect when clicking on empty space
@@ -999,6 +896,14 @@ export default function Scene3D() {
         gl={{ antialias: true }}
         camera={{ fov: 75 }}
       >
+        <FrameProcessor 
+          setEntryRenderInfo={setEntryRenderInfo}
+          setConnectionOpacities={setConnectionOpacities}
+        />
+        <DragController
+          dragState={dragState}
+          setDragState={setDragState}
+        />
         <color attach="background" args={['#1a1a2e']} />
         <fog attach="fog" args={['#1a1a2e', 10, 50]} />
         
@@ -1008,14 +913,7 @@ export default function Scene3D() {
           enablePan={true} 
           enableZoom={true} 
           enableRotate={true} 
-        />
-        <CameraController 
-          cameraRef={cameraRef} 
-          onCameraMove={clearConnectionFeedback}
-        />
-        <DragController
-          dragState={dragState}
-          setDragState={setDragState}
+          onChange={clearConnectionFeedback}
         />
         
         <ambientLight intensity={0.3} />
@@ -1024,16 +922,21 @@ export default function Scene3D() {
         <pointLight position={[0, 5, 0]} intensity={0.3} />
         
         {/* Render all entries */}
-        {entries.map(entry => (
-          <Entry 
-            key={entry.id} 
-            entry={entry}
-            entryRef={el => entryRefs.current.set(entry.id, el)}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            isDragging={dragState.isDragging && dragState.entryId === entry.id}
-          />
-        ))}
+        {entries.map(entry => {
+          const renderInfo = entryRenderInfo.get(entry.id) || { isFacingCamera: true, lodLevel: 'near' };
+          return (
+            <Entry 
+              key={entry.id} 
+              entry={entry}
+              entryRef={el => entryRefs.current.set(entry.id, el)}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              isDragging={dragState.isDragging && dragState.entryId === entry.id}
+              isFacingCamera={renderInfo.isFacingCamera}
+              lodLevel={renderInfo.lodLevel}
+            />
+          )
+        })}
         
         <RearrangementAnimator entryRefs={entryRefs.current} />
         
@@ -1041,6 +944,7 @@ export default function Scene3D() {
         {dragState.isDragging && dragState.entryId && dragState.originalPosition && dragState.previewPosition && (() => {
           const draggedEntry = entries.find(e => e.id === dragState.entryId)
           if (!draggedEntry) return null
+          const renderInfo = entryRenderInfo.get(draggedEntry.id) || { isFacingCamera: true, lodLevel: 'near' };
           
           return (
             <>
@@ -1050,6 +954,7 @@ export default function Scene3D() {
                 opacity={0.75}
                 color={SELECTED_ENTRY_COLOR}
                 summary={draggedEntry.summary}
+                isFacingCamera={renderInfo.isFacingCamera}
                 hideBackText={true}
               />
               {/* New position ghost at 25% opacity */}
@@ -1058,6 +963,7 @@ export default function Scene3D() {
                 opacity={0.25}
                 color={SELECTED_ENTRY_COLOR}
                 summary={draggedEntry.summary}
+                isFacingCamera={renderInfo.isFacingCamera}
                 hideBackText={true}
               />
             </>
@@ -1068,6 +974,7 @@ export default function Scene3D() {
         {connections.map(connection => {
           const sourceEntry = entries.find(e => e.id === connection.sourceId)
           const targetEntry = entries.find(e => e.id === connection.targetId)
+          const opacity = connectionOpacities.get(connection.id) ?? 1;
           
           if (!sourceEntry || !targetEntry) return null
           
@@ -1077,6 +984,7 @@ export default function Scene3D() {
               connection={connection}
               sourceEntry={sourceEntry}
               targetEntry={targetEntry}
+              opacity={opacity}
             />
           )
         })}
@@ -1124,7 +1032,7 @@ export default function Scene3D() {
       />
       
       {/* Debug Display */}
-      <DebugDisplay show={showDevTools} />
+      <DebugDisplay show={showDevTools} rearrangementTargetPositions={useMindMapStore.getState().rearrangementTargetPositions} />
     </div>
   )
 }

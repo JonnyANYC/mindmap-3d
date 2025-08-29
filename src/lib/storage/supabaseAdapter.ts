@@ -4,6 +4,9 @@ import { StorageAdapter } from './types'
 
 export class SupabaseAdapter implements StorageAdapter {
   async isAvailable(): Promise<boolean> {
+    if (typeof window === 'undefined') {
+      return false
+    }
     if (!supabase) return false
     
     try {
@@ -36,7 +39,8 @@ export class SupabaseAdapter implements StorageAdapter {
         .upsert({
           id: mindMap.id,
           user_id: user?.id || null,
-          title: mindMap.name,
+          name: mindMap.name,
+          root_entry_id: mindMap.rootEntryId,
           description: '',
           is_deleted: false,
           updated_at: new Date().toISOString()
@@ -145,7 +149,7 @@ export class SupabaseAdapter implements StorageAdapter {
       // Convert to MindMap type
       const mindMap: MindMap = {
         id: mapData.id,
-        name: mapData.title,
+        name: mapData.name,
         entries: (entriesData || []).map(e => ({
           id: e.id,
           position: [e.position_x, e.position_y, e.position_z] as [number, number, number],
@@ -163,6 +167,7 @@ export class SupabaseAdapter implements StorageAdapter {
         })),
         createdAt: new Date(mapData.created_at),
         updatedAt: new Date(mapData.updated_at),
+        rootEntryId: mapData.root_entry_id || null,
         uiSettings: mapData.ui_settings || undefined
       }
 
@@ -225,7 +230,7 @@ export class SupabaseAdapter implements StorageAdapter {
         .from('mindmaps')
         .insert({
           user_id: user?.id || null,
-          title: name,
+          name: name,
           description: '',
           is_deleted: false
         })

@@ -10,6 +10,8 @@ interface DebugDisplayProps {
 export function DebugDisplay({ show = false }: DebugDisplayProps) {
   const entries = useMindMapStore((state) => state.entries)
   const connections = useMindMapStore((state) => state.connections)
+  const rearrangementTargetPositions = useMindMapStore((state) => state.rearrangementTargetPositions)
+  const rearrangementProgress = useMindMapStore((state) => state.rearrangementProgress)
   const [fps, setFps] = useState(60)
   
   useEffect(() => {
@@ -43,6 +45,12 @@ export function DebugDisplay({ show = false }: DebugDisplayProps) {
           <span className="text-gray-400">FPS:</span>
           <span className={`font-bold ${fpsColor}`}>{fps}</span>
         </div>
+        {rearrangementTargetPositions && (
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Rearranging:</span>
+            <span className="font-bold">{Math.round(rearrangementProgress * 100)}%</span>
+          </div>
+        )}
       </div>
       <div className="mt-2 pt-2 border-t border-gray-600 text-xs text-gray-400">
         Press Ctrl+Shift+D to toggle
