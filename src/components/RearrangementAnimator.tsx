@@ -5,7 +5,8 @@ import * as THREE from 'three';
 
 export function RearrangementAnimator({ entryRefs }: { entryRefs: Map<string, THREE.Group | null> }) {
   const targetPositions = useMindMapStore((state) => state.rearrangementTargetPositions);
-  const { moveEntry, clearRearrangement } = useMindMapStore((state) => state);
+  const moveEntry = useMindMapStore((state) => state.moveEntry);
+  const clearRearrangement = useMindMapStore((state) => state.clearRearrangement);
 
   useFrame((_, delta) => {
     if (!targetPositions) return;
