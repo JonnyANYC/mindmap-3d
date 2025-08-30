@@ -50,3 +50,13 @@ npx shadcn add <component>  # Add shadcn/ui components
 ### Import Aliases
 - `@/*` maps to `src/*`
 - Components use `@/components`, utilities use `@/lib/utils`
+
+
+### Tool Usage
+- when committing code, always mention in the commit message what changes were made since the last commit. If the code changes were made to resolve one or more GitHub issues, then list the issue IDs and the issue titles in the commit message. Mention in the commit message if some failing unit tests were skipped.
+- Use the GitHub CLI (`gh`) with the Shell tool for all GitHub-related tasks.
+- Use the following command to fetch GitHub issues for a given milestone: `gh issue list --repo https://github.com/JonnyANYC/mindmap-3d --milestone <milestone name> --state open`
+- Use the following command to view a GitHub issue: `gh issue view <issue ID> --repo <repo>`
+- Use the following commend to close a GitHub issue: `gh issue close <issue #> --comment <change comment>`
+- Use the following command to run the app to test for errors: `npm run dev & sleep 7 && curl -s -o /dev/null "http://localhost:3000/" && pkill -f "node .*mindmap.*next dev"`
+- Never run `next dev`.
