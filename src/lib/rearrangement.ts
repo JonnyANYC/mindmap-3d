@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type { MindMapEntry, Position3D, Connection } from '@/types/mindmap';
 
 const BOUNDING_SPHERE_RADIUS = 5;
-const REPULSION_STRENGTH = 0.5;
-const ATTRACTION_STRENGTH = 0.1;
+const REPULSION_STRENGTH = 1.0; // Increased from 0.5
+const ATTRACTION_STRENGTH = 0.05; // Decreased from 0.1  
 const DAMPING_FACTOR = 0.9;
 const MAX_SPEED = 0.5;
 const ITERATIONS = 100;
+const MIN_DISTANCE_FROM_ROOT = 1.5; // Minimum distance entries should maintain from root
 
 export function calculateRearrangedPositions(
   rootEntry: MindMapEntry,
@@ -17,8 +18,21 @@ export function calculateRearrangedPositions(
   const velocities = new Map<string, THREE.Vector3>();
 
   // Initialize positions and velocities
-  children.forEach(child => {
-    newPositions.set(child.id, child.position);
+  // Start children at random positions around the root to avoid clustering
+  const rootPosition = new THREE.Vector3(...rootEntry.position);
+  children.forEach((child, index) => {
+    // Use spherical coordinates for better initial distribution
+    const phi = Math.acos(1 - 2 * (index + 0.5) / children.length); // Evenly distributed latitude
+    const theta = Math.PI * (1 + Math.sqrt(5)) * index; // Golden angle for longitude
+    
+    const x = Math.sin(phi) * Math.cos(theta);
+    const y = Math.sin(phi) * Math.sin(theta);
+    const z = Math.cos(phi);
+    
+    const offset = new THREE.Vector3(x, y, z).multiplyScalar(BOUNDING_SPHERE_RADIUS * 0.8);
+    const initialPos = rootPosition.clone().add(offset);
+    
+    newPositions.set(child.id, [initialPos.x, initialPos.y, initialPos.z]);
     velocities.set(child.id, new THREE.Vector3());
   });
 
@@ -48,6 +62,14 @@ export function calculateRearrangedPositions(
         }
       });
 
+      // Repulsion force from the root entry itself to prevent children from getting too close
+      const rootRepulsionDirection = childPosition.clone().sub(rootPosition);
+      const rootDistance = rootRepulsionDirection.length();
+      if (rootDistance > 0) {
+        const rootRepulsionForce = rootRepulsionDirection.normalize().multiplyScalar(REPULSION_STRENGTH / (rootDistance * rootDistance));
+        repulsionForce.add(rootRepulsionForce);
+      }
+
       // Total force
       const totalForce = attractionForce.add(repulsionForce);
 
@@ -64,14 +86,42 @@ export function calculateRearrangedPositions(
     });
   }
 
-  // Constrain to bounding sphere
+  // Constrain to bounding sphere and enforce minimum distance from root
   children.forEach(child => {
     const childPosition = new THREE.Vector3(...newPositions.get(child.id)!);
     const rootPosition = new THREE.Vector3(...rootEntry.position);
     const direction = childPosition.clone().sub(rootPosition);
-    if (direction.length() > BOUNDING_SPHERE_RADIUS) {
-        const newPos = rootPosition.clone().add(direction.normalize().multiplyScalar(BOUNDING_SPHERE_RADIUS));
+    const distance = direction.length();
+    
+    
+    // Enforce minimum distance from root
+    if (distance < MIN_DISTANCE_FROM_ROOT) {
+      if (distance === 0) {
+        // If exactly at root position, move to a default offset
+        const defaultOffset = new THREE.Vector3(MIN_DISTANCE_FROM_ROOT, 0, 0);
+        const newPos = new THREE.Vector3(
+          rootPosition.x + defaultOffset.x,
+          rootPosition.y + defaultOffset.y,
+          rootPosition.z + defaultOffset.z
+        );
         newPositions.set(child.id, [newPos.x, newPos.y, newPos.z]);
+      } else {
+        const newPos = new THREE.Vector3(
+          rootPosition.x + direction.x / distance * MIN_DISTANCE_FROM_ROOT,
+          rootPosition.y + direction.y / distance * MIN_DISTANCE_FROM_ROOT,
+          rootPosition.z + direction.z / distance * MIN_DISTANCE_FROM_ROOT
+        );
+        newPositions.set(child.id, [newPos.x, newPos.y, newPos.z]);
+      }
+    }
+    // Constrain to bounding sphere
+    else if (distance > BOUNDING_SPHERE_RADIUS) {
+      const newPos = new THREE.Vector3(
+        rootPosition.x + direction.x / distance * BOUNDING_SPHERE_RADIUS,
+        rootPosition.y + direction.y / distance * BOUNDING_SPHERE_RADIUS,
+        rootPosition.z + direction.z / distance * BOUNDING_SPHERE_RADIUS
+      );
+      newPositions.set(child.id, [newPos.x, newPos.y, newPos.z]);
     }
   });
 
@@ -96,9 +146,20 @@ export function calculateSimplifiedPositions(
     const axis = axes[axisIndex];
     const sign = signs[signIndex];
 
-    offset[axis] = distance * sign;
+    // Use explicit property assignment to avoid TypeScript issues
+    if (axis === 'x') {
+      offset.x = distance * sign;
+    } else if (axis === 'y') {
+      offset.y = distance * sign;
+    } else if (axis === 'z') {
+      offset.z = distance * sign;
+    }
 
-    const newPos = rootPosition.clone().add(offset);
+    const newPos = new THREE.Vector3(
+      rootPosition.x + offset.x,
+      rootPosition.y + offset.y,
+      rootPosition.z + offset.z
+    );
     newPositions.set(child.id, [newPos.x, newPos.y, newPos.z]);
 
     // Cycle through axes and signs
@@ -133,14 +194,12 @@ export function rearrangeMindMap(
   }
 
   function rearrange(currentEntry: MindMapEntry) {
-    console.log('rearranging', currentEntry.id);
     if (rearrangedEntries.has(currentEntry.id)) {
       return;
     }
     rearrangedEntries.add(currentEntry.id);
 
     const children = getChildren(currentEntry.id);
-    console.log('found', children.length, 'children');
     if (children.length === 0) {
       return;
     }
