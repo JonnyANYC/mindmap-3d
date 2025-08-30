@@ -193,7 +193,14 @@ export function MindMapSelector() {
                 id="name"
                 value={newMapName}
                 onChange={(e) => setNewMapName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleCreateMindMap()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault() // Prevent default to avoid form submission or other side effects
+                    e.stopPropagation() // Stop propagation to prevent other listeners from acting on Enter
+                    handleCreateMindMap()
+                  }
+                  // For other keys, allow propagation so global shortcuts can still work
+                }}
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
                 className="col-span-3"

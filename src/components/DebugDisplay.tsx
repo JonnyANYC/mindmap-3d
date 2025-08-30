@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useMindMapStore } from '@/lib/store'
 
+import { Position3D } from '@/types/mindmap'
+
 interface DebugDisplayProps {
   show?: boolean
+  selectedEntryPosition?: Position3D | null
 }
 
-export function DebugDisplay({ show = false }: DebugDisplayProps) {
+export function DebugDisplay({ show = false, selectedEntryPosition }: DebugDisplayProps) {
   const entries = useMindMapStore((state) => state.entries)
   const connections = useMindMapStore((state) => state.connections)
   const rearrangementTargetPositions = useMindMapStore((state) => state.rearrangementTargetPositions)
@@ -49,6 +52,12 @@ export function DebugDisplay({ show = false }: DebugDisplayProps) {
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Rearranging:</span>
             <span className="font-bold">{Math.round(rearrangementProgress * 100)}%</span>
+          </div>
+        )}
+        {selectedEntryPosition && (
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Selected Pos:</span>
+            <span className="font-bold">{`X: ${selectedEntryPosition[0].toFixed(2)}, Y: ${selectedEntryPosition[1].toFixed(2)}, Z: ${selectedEntryPosition[2].toFixed(2)}`}</span>
           </div>
         )}
       </div>

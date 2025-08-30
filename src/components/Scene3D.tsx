@@ -13,7 +13,8 @@ import {
   useHoveredEntryId,
   useEntryActions,
   useConnectionFeedback,
-  useConnectionActions
+  useConnectionActions,
+  useSelectedEntry
 } from '@/hooks/useMindMapStore'
 import { DEFAULT_ENTRY_COLOR, SELECTED_ENTRY_COLOR, HOVERED_ENTRY_COLOR } from '@/types/mindmap'
 import type { Entry as EntryType, Connection as ConnectionType, Position3D } from '@/types/mindmap'
@@ -546,6 +547,7 @@ export default function Scene3D() {
   const connections = useConnections()
   const { selectEntry, addEntry, moveEntry, deleteEntry } = useEntryActions()
   const selectedEntryId = useSelectedEntryId()
+  const selectedEntry = useSelectedEntry()
   const connectionFeedback = useConnectionFeedback()
   const { undoConnection, redoConnection, clearConnectionFeedback } = useConnectionActions()
   const cameraRef = useRef<Camera | null>(null)
@@ -1032,7 +1034,7 @@ export default function Scene3D() {
       />
       
       {/* Debug Display */}
-      <DebugDisplay show={showDevTools} rearrangementTargetPositions={useMindMapStore.getState().rearrangementTargetPositions} />
+      <DebugDisplay show={showDevTools} rearrangementTargetPositions={useMindMapStore.getState().rearrangementTargetPositions} selectedEntryPosition={selectedEntry?.position} />
     </div>
   )
 }
