@@ -185,6 +185,7 @@ interface MindMapState {
   // Rearrangement state
   rearrangementTargetPositions: Map<string, Position3D> | null
   rearrangementProgress: number
+  isRearrangementInProgress: boolean
   
   // Rearrangement undo state
   previousRearrangementState: {
@@ -295,6 +296,7 @@ export const useMindMapStore = create<MindMapState>()(
     isInputFocused: false,
     rearrangementTargetPositions: null,
     rearrangementProgress: 0,
+    isRearrangementInProgress: false,
     previousRearrangementState: null,
     connectionStatus: 'disconnected' as const,
     
@@ -349,7 +351,7 @@ export const useMindMapStore = create<MindMapState>()(
           Object.assign(entry, updates)
           entry.updatedAt = new Date()
           // Only clear undo state for position updates, not other property updates
-          if (updates.position) {
+          if (updates.position && !state.isRearrangementInProgress) {
             state.previousRearrangementState = null
           }
         }
@@ -453,8 +455,10 @@ export const useMindMapStore = create<MindMapState>()(
         if (entry) {
           entry.position = position
           entry.updatedAt = new Date()
-          // Clear rearrangement undo after manual move
-          state.previousRearrangementState = null
+          // Only clear rearrangement undo after manual move, not during rearrangement
+          if (!state.isRearrangementInProgress) {
+            state.previousRearrangementState = null
+          }
         }
       })
     },
@@ -982,6 +986,7 @@ export const useMindMapStore = create<MindMapState>()(
       set((state) => {
         state.rearrangementTargetPositions = targetPositions
         state.rearrangementProgress = 0
+        state.isRearrangementInProgress = true
       })
     },
 
@@ -1011,6 +1016,7 @@ export const useMindMapStore = create<MindMapState>()(
       set((state) => {
         state.rearrangementTargetPositions = null
         state.rearrangementProgress = 0
+        state.isRearrangementInProgress = false
       })
     },
     setInputFocused: (isFocused: boolean) => {
