@@ -16,7 +16,12 @@ export class SessionStorageAdapter implements StorageAdapter {
   }
   
   constructor() {
-    // Check if sessionStorage is available
+    // Check if sessionStorage is available (only in browser environment)
+    if (typeof window === 'undefined') {
+      this.useInMemory = true
+      return
+    }
+    
     try {
       const testKey = '__sessionStorage_test__'
       sessionStorage.setItem(testKey, 'test')
@@ -106,8 +111,8 @@ export class SessionStorageAdapter implements StorageAdapter {
         if (mindMap) {
           mindMaps.push({
             id: mindMap.id,
-            user_id: null,
-            title: mindMap.name,
+            user_id: undefined,
+            name: mindMap.name,
             description: '',
             is_deleted: false,
             created_at: mindMap.createdAt.toISOString(),

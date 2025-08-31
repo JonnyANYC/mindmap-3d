@@ -4,18 +4,26 @@ import { StorageAdapter } from './types'
 
 export class SupabaseAdapter implements StorageAdapter {
   async isAvailable(): Promise<boolean> {
+    // Check if we're in a browser environment first
     if (typeof window === 'undefined') {
       return false
     }
+    
     if (!supabase) return false
     
     try {
-      // Test connection with a simple query
+      // Test connection with a simple query with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+      
       const { error } = await supabase
         .from('mindmaps')
         .select('count')
         .limit(1)
         .single()
+        .abortSignal(controller.signal)
+      
+      clearTimeout(timeoutId)
       
       // If we get a "no rows" error, that's fine - the connection works
       return !error || error.code === 'PGRST116'

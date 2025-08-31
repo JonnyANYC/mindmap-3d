@@ -191,6 +191,7 @@ describe('Entry Component', () => {
       store.selectEntry(mockEntry.id)
       
       // Create a third entry
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const mockEntry3 = store.addEntry([1, 1, 1])
       
       // Update positions of multiple entries

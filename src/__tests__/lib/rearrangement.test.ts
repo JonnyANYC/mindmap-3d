@@ -2,6 +2,7 @@ import { calculateRearrangedPositions, calculateSimplifiedPositions, rearrangeMi
 import type { MindMapEntry, Connection } from '@/types/mindmap'
 import * as THREE from 'three'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MIN_DISTANCE_FROM_ROOT = 1.5
 const BOUNDING_SPHERE_RADIUS = 5
 

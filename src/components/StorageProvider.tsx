@@ -26,8 +26,15 @@ interface StorageProviderProps {
 export function StorageProvider({ children }: StorageProviderProps) {
   const [status, setStatus] = useState<StorageStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
   
   useEffect(() => {
+    setIsMounted(true)
+  }, [])
+  
+  useEffect(() => {
+    if (!isMounted) return // Wait for client-side hydration
+    
     const initStorage = async () => {
       try {
         const storageStatus = await storageService.initialize()
@@ -56,7 +63,7 @@ export function StorageProvider({ children }: StorageProviderProps) {
     return () => {
       mindMapSaveService.stopAutoSave()
     }
-  }, [])
+  }, [isMounted])
   
   return (
     <StorageContext.Provider value={{ status, isLoading }}>

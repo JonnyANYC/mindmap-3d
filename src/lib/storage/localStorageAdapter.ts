@@ -8,6 +8,11 @@ const INDEX_KEY = 'mindmap_index'
 
 export class LocalStorageAdapter implements StorageAdapter {
   async isAvailable(): Promise<boolean> {
+    // Check if we're in a browser environment first
+    if (typeof window === 'undefined') {
+      return false
+    }
+    
     try {
       const testKey = '__localStorage_test__'
       localStorage.setItem(testKey, 'test')
@@ -115,7 +120,7 @@ export class LocalStorageAdapter implements StorageAdapter {
         if (mindMap) {
           mindMaps.push({
             id: mindMap.id,
-            user_id: null,
+            user_id: undefined,
             name: mindMap.name,
             description: '',
             is_deleted: false,

@@ -734,7 +734,18 @@ export default function Scene3D() {
       // Check for Ctrl/Cmd + Z (undo)
       else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        undoConnection()
+        
+        // Try to undo rearrangement first, then fall back to connection undo
+        const didUndoRearrangement = useMindMapStore.getState().undoRearrangement()
+        if (didUndoRearrangement) {
+          toast({
+            title: "Rearrangement Undone",
+            description: "The mind map has been restored to its previous state.",
+            duration: 3000,
+          })
+        } else {
+          undoConnection()
+        }
       }
       // Check for Ctrl/Cmd + Shift + Z (redo)
       else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
@@ -867,18 +878,21 @@ export default function Scene3D() {
         e.preventDefault()
         setShowDevTools(prev => !prev)
       }
-      // Check for Shift + P (rearrange mind map)
-      else if (e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'p') {
+      // Check for Ctrl+Shift+R (rearrange mind map)  
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
+        const startTime = Date.now()
         const { dismiss } = toast({
           title: "Rearranging Mind Map",
           description: "Please wait...",
         })
         useMindMapStore.getState().rearrangeMindMap(() => {
           dismiss()
+          const duration = ((Date.now() - startTime) / 1000).toFixed(1)
           toast({
-            title: "Rearranging Complete",
-            description: "The mind map has been successfully rearranged.",
+            title: "Rearrangement Complete",
+            description: `Completed in ${duration}s. Press Ctrl+Z to undo.`,
+            duration: 5000,
           })
         })
       }

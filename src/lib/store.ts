@@ -6,6 +6,105 @@ import { enableMapSet } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import type { Entry, Connection, MindMap, Position3D } from '@/types/mindmap'
 import { rearrangeMindMap } from './rearrangement'
+
+// Web Worker interface for rearrangement
+interface RearrangementWorker {
+  rearrangeWithWorker: (
+    rootEntry: Entry,
+    entries: Entry[],
+    connections: Connection[],
+    onProgress?: (progress: number) => void,
+    onComplete?: (result: { newPositions: Record<string, Position3D>, updatedEntries: Entry[] }) => void,
+    onError?: (error: string) => void
+  ) => void
+  terminateWorker: () => void
+  isWorking: () => boolean
+}
+
+// Global worker instance
+let rearrangementWorker: RearrangementWorker | null = null
+
+// Initialize worker
+const initRearrangementWorker = (): RearrangementWorker => {
+  if (!rearrangementWorker && typeof window !== 'undefined') {
+    const workerRef = { current: null as Worker | null }
+    const isWorkingRef = { current: false }
+
+    const initWorker = () => {
+      if (!workerRef.current) {
+        workerRef.current = new Worker('/rearrangement-worker.js')
+      }
+    }
+
+    const terminateWorker = () => {
+      if (workerRef.current) {
+        workerRef.current.terminate()
+        workerRef.current = null
+      }
+      isWorkingRef.current = false
+    }
+
+    const rearrangeWithWorker = (
+      rootEntry: Entry,
+      entries: Entry[],
+      connections: Connection[],
+      onProgress?: (progress: number) => void,
+      onComplete?: (result: { newPositions: Record<string, Position3D>, updatedEntries: Entry[] }) => void,
+      onError?: (error: string) => void
+    ) => {
+      if (isWorkingRef.current) {
+        onError?.('Rearrangement is already in progress')
+        return
+      }
+
+      initWorker()
+      
+      if (!workerRef.current) {
+        onError?.('Failed to initialize worker')
+        return
+      }
+
+      isWorkingRef.current = true
+      const worker = workerRef.current
+
+      worker.onmessage = (e) => {
+        const { type, progress, result, error } = e.data
+
+        switch (type) {
+          case 'progress':
+            onProgress?.(progress)
+            break
+          case 'complete':
+            isWorkingRef.current = false
+            onComplete?.(result)
+            break
+          case 'error':
+            isWorkingRef.current = false
+            onError?.(error)
+            break
+        }
+      }
+
+      worker.onerror = (error) => {
+        isWorkingRef.current = false
+        onError?.(`Worker error: ${error.message}`)
+      }
+
+      worker.postMessage({
+        type: 'rearrange',
+        data: { rootEntry, entries, connections }
+      })
+    }
+
+    rearrangementWorker = {
+      rearrangeWithWorker,
+      terminateWorker,
+      isWorking: () => isWorkingRef.current
+    }
+  }
+
+  return rearrangementWorker!
+}
 import { DEFAULT_ENTRY_COLOR } from '@/types/mindmap'
 
 // Enable Map support in Immer
@@ -85,6 +184,13 @@ interface MindMapState {
 
   // Rearrangement state
   rearrangementTargetPositions: Map<string, Position3D> | null
+  rearrangementProgress: number
+  
+  // Rearrangement undo state
+  previousRearrangementState: {
+    entries: Entry[]
+    timestamp: number
+  } | null
   
   // Connection status
   connectionStatus: 'connected' | 'disconnected' | 'connecting'
@@ -148,7 +254,9 @@ interface MindMapState {
   toggleHelpOverlay: () => void
   setHelpOverlayCollapsed: (collapsed: boolean) => void
   rearrangeMindMap: (onComplete?: () => void) => void
+  undoRearrangement: () => boolean
   startRearrangement: (targetPositions: Map<string, Position3D>) => void
+  updateRearrangementProgress: (progress: number) => void
   clearRearrangement: () => void
   setInputFocused: (isFocused: boolean) => void
 }
@@ -186,6 +294,8 @@ export const useMindMapStore = create<MindMapState>()(
     isHelpOverlayCollapsed: false,
     isInputFocused: false,
     rearrangementTargetPositions: null,
+    rearrangementProgress: 0,
+    previousRearrangementState: null,
     connectionStatus: 'disconnected' as const,
     
     // Entry actions
@@ -238,6 +348,10 @@ export const useMindMapStore = create<MindMapState>()(
         if (entry) {
           Object.assign(entry, updates)
           entry.updatedAt = new Date()
+          // Only clear undo state for position updates, not other property updates
+          if (updates.position) {
+            state.previousRearrangementState = null
+          }
         }
       })
     },
@@ -339,6 +453,8 @@ export const useMindMapStore = create<MindMapState>()(
         if (entry) {
           entry.position = position
           entry.updatedAt = new Date()
+          // Clear rearrangement undo after manual move
+          state.previousRearrangementState = null
         }
       })
     },
@@ -800,17 +916,66 @@ export const useMindMapStore = create<MindMapState>()(
         return
       }
 
-      // This can be a long-running task, so we do it asynchronously
-      setTimeout(() => {
-        const { newPositions, updatedEntries } = rearrangeMindMap(rootEntry, state.entries, state.connections, (progress) => {
+      // Store the current state before rearrangement for undo
+      set((state) => {
+        state.previousRearrangementState = {
+          entries: JSON.parse(JSON.stringify(state.entries)), // Deep copy
+          timestamp: Date.now()
+        }
+      })
+
+      // Note: startTime tracking was removed since duration is now handled in Scene3D
+      
+      // Try to use Web Worker first, fall back to main thread if not available
+      const worker = initRearrangementWorker()
+      
+      worker.rearrangeWithWorker(
+        rootEntry,
+        state.entries,
+        state.connections,
+        // Progress callback
+        (progress) => {
           get().updateRearrangementProgress(progress)
-        })
-        set((state) => {
-          state.entries = updatedEntries
-        })
-        get().startRearrangement(newPositions)
-        onComplete?.()
-      }, 50) // 50ms delay to allow UI to update with loading state
+        },
+        // Complete callback
+        (result) => {
+          // Convert positions back to Map
+          const newPositions = new Map<string, Position3D>()
+          Object.entries(result.newPositions).forEach(([id, pos]) => {
+            newPositions.set(id, pos as Position3D)
+          })
+          
+          set((state) => {
+            state.entries = result.updatedEntries
+          })
+          
+          get().startRearrangement(newPositions)
+          
+          if (onComplete) {
+            onComplete()
+          }
+        },
+        // Error callback - fallback to main thread
+        (error) => {
+          console.warn('Web Worker failed, falling back to main thread:', error)
+          
+          // Fallback to main thread computation
+          setTimeout(() => {
+            const { newPositions, updatedEntries } = rearrangeMindMap(rootEntry, state.entries, state.connections, (progress) => {
+              get().updateRearrangementProgress(progress)
+            })
+            
+            set((state) => {
+              state.entries = updatedEntries
+            })
+            get().startRearrangement(newPositions)
+            
+            if (onComplete) {
+              onComplete()
+            }
+          }, 50)
+        }
+      )
     },
 
     startRearrangement: (targetPositions: Map<string, Position3D>) => {
@@ -824,6 +989,22 @@ export const useMindMapStore = create<MindMapState>()(
       set((state) => {
         state.rearrangementProgress = progress
       })
+    },
+
+    undoRearrangement: () => {
+      const state = get()
+      
+      if (!state.previousRearrangementState) {
+        return false // No undo available
+      }
+      
+      // Restore the previous state
+      set((currentState) => {
+        currentState.entries = state.previousRearrangementState!.entries
+        currentState.previousRearrangementState = null // Clear after use
+      })
+      
+      return true
     },
 
     clearRearrangement: () => {

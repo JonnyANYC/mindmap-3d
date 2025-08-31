@@ -23,6 +23,7 @@ export interface MindMap {
   connections: Connection[]
   createdAt: Date
   updatedAt: Date
+  rootEntryId?: string | null
   uiSettings?: {
     isHelpOverlayCollapsed?: boolean
   }
