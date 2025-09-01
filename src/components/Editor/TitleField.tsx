@@ -22,9 +22,10 @@ export function TitleField({ entryId, initialTitle, autoSelect = false, onValida
   // Auto-select text for new entries  
   useEffect(() => {
     if (autoSelect && inputRef.current) {
-      // Select the text after focus (autoFocus handles the focus)
+      // Focus and select the text for new entries
       setTimeout(() => {
         if (inputRef.current) {
+          inputRef.current.focus()
           inputRef.current.select()
         }
       }, 50)
@@ -112,7 +113,6 @@ export function TitleField({ entryId, initialTitle, autoSelect = false, onValida
         className={error ? 'border-red-500' : ''}
         aria-invalid={!!error}
         aria-describedby={error ? 'title-error' : undefined}
-        autoFocus={autoSelect}
       />
       {error && (
         <p id="title-error" className="text-sm text-red-600 mt-1">

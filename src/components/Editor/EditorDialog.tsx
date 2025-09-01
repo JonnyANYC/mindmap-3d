@@ -70,7 +70,14 @@ export function EditorDialog() {
 
   return (
     <Dialog open={isEditorOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-[800px] h-[80vh] flex flex-col p-0 gap-0">
+      <DialogContent 
+        className="max-w-[800px] h-[80vh] flex flex-col p-0 gap-0"
+        onOpenAutoFocus={(e) => {
+          // Only allow auto-focus for new entries
+          if (!isNewEntryBeingEdited) {
+            e.preventDefault()
+          }
+        }}>
         <DialogHeader className="px-6 py-4 border-b">
           <DialogTitle>Edit Entry</DialogTitle>
           <DialogDescription>

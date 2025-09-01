@@ -31,7 +31,7 @@ describe('Title Field Selection Behavior', () => {
   })
 
   describe('TitleField Component', () => {
-    it('should auto-select text when autoSelect is true', () => {
+    it('should auto-select text when autoSelect is true', async () => {
       const { container } = render(
         <TitleField
           entryId="test-id"
@@ -42,12 +42,13 @@ describe('Title Field Selection Behavior', () => {
 
       const input = container.querySelector('input') as HTMLInputElement
       
-      // Check that select() was called
-      expect(document.activeElement).toBe(input)
+      // Wait for the setTimeout in the component
+      await waitFor(() => {
+        expect(input).toHaveFocus()
+      }, { timeout: 100 })
       
-      // In a real browser, the text would be selected
-      // We can't directly test selection state in jsdom, but we can verify focus
-      expect(input).toHaveFocus()
+      // Check that focus was set
+      expect(document.activeElement).toBe(input)
     })
 
     it('should not auto-select text when autoSelect is false', () => {
@@ -106,7 +107,7 @@ describe('Title Field Selection Behavior', () => {
       })
     })
 
-    it.skip('should NOT auto-select title when opening editor for existing entry', async () => {
+    it('should NOT auto-select title when opening editor for existing entry', async () => {
       const store = useMindMapStore.getState()
       
       // Open editor for existing entry
@@ -128,7 +129,7 @@ describe('Title Field Selection Behavior', () => {
       })
     })
 
-    it.skip('should NOT auto-select title when isNewEntryBeingEdited is not specified', async () => {
+    it('should NOT auto-select title when isNewEntryBeingEdited is not specified', async () => {
       const store = useMindMapStore.getState()
       
       // Open editor without specifying isNewEntry (defaults to false)
