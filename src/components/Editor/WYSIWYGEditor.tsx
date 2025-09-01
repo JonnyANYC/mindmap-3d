@@ -22,6 +22,8 @@ export function WYSIWYGEditor({ initialContent, onContentChange, onSave }: WYSIW
         codeBlock: false,
         blockquote: false,
         horizontalRule: false,
+        // Disable built-in link if it exists
+        link: false,
       }),
       Link.configure({
         openOnClick: false,
