@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 import type { MindMapEntry, Position3D, Connection } from '@/types/mindmap';
 
+// Import the shared core algorithm
+// Note: Since this is in public folder, we need to handle it differently
+// For TypeScript, we'll keep a TypeScript version that matches the JS core
+
 const BOUNDING_SPHERE_RADIUS = 5;
-const REPULSION_STRENGTH = 1.0; // Increased from 0.5
-const ATTRACTION_STRENGTH = 0.05; // Decreased from 0.1  
+const REPULSION_STRENGTH = 1.0;
+const ATTRACTION_STRENGTH = 0.05;
 const DAMPING_FACTOR = 0.9;
 const MAX_SPEED = 0.5;
 const ITERATIONS = 100;
-const MIN_DISTANCE_FROM_ROOT = 1.5; // Minimum distance entries should maintain from root
+const MIN_DISTANCE_FROM_ROOT = 1.5;
 
 export function calculateRearrangedPositions(
   rootEntry: MindMapEntry,
@@ -18,12 +22,11 @@ export function calculateRearrangedPositions(
   const velocities = new Map<string, THREE.Vector3>();
 
   // Initialize positions and velocities
-  // Start children at random positions around the root to avoid clustering
   const rootPosition = new THREE.Vector3(...rootEntry.position);
   children.forEach((child, index) => {
     // Use spherical coordinates for better initial distribution
-    const phi = Math.acos(1 - 2 * (index + 0.5) / children.length); // Evenly distributed latitude
-    const theta = Math.PI * (1 + Math.sqrt(5)) * index; // Golden angle for longitude
+    const phi = Math.acos(1 - 2 * (index + 0.5) / children.length);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * index;
     
     const x = Math.sin(phi) * Math.cos(theta);
     const y = Math.sin(phi) * Math.sin(theta);
@@ -185,12 +188,31 @@ export function rearrangeMindMap(
   const allNewPositions = new Map<string, Position3D>();
   const rearrangedEntries = new Set<string>();
   const localEntries = JSON.parse(JSON.stringify(entries));
+  const startTime = performance.now();
+  const isLargeMindMap = entries.length > 100; // Consider mind maps with 100+ entries as large
 
   function getChildren(entryId: string): MindMapEntry[] {
     const childrenIds = connections
       .filter(c => c.sourceId === entryId || c.targetId === entryId)
       .map(c => c.sourceId === entryId ? c.targetId : c.sourceId);
     return localEntries.filter((e: MindMapEntry) => childrenIds.includes(e.id) && !rearrangedEntries.has(e.id));
+  }
+
+  // Count descendants for an entry (excluding already rearranged ones)
+  function countDescendants(entryId: string, visited: Set<string> = new Set()): number {
+    if (visited.has(entryId) || rearrangedEntries.has(entryId)) {
+      return 0;
+    }
+    visited.add(entryId);
+    
+    const children = getChildren(entryId);
+    let count = children.length;
+    
+    for (const child of children) {
+      count += countDescendants(child.id, visited);
+    }
+    
+    return count;
   }
 
   function rearrange(currentEntry: MindMapEntry) {
@@ -222,7 +244,21 @@ export function rearrangeMindMap(
       allNewPositions.set(id, pos);
     });
 
-    children.forEach(child => {
+    // Sort children by descendant count (most descendants first)
+    // Skip this optimization for very large mind maps if it affects performance
+    let sortedChildren = children;
+    if (!isLargeMindMap || (performance.now() - startTime) < 1000) {
+      const childrenWithDescendants = children.map(child => ({
+        entry: child,
+        descendantCount: countDescendants(child.id)
+      }));
+      
+      sortedChildren = childrenWithDescendants
+        .sort((a, b) => b.descendantCount - a.descendantCount)
+        .map(item => item.entry);
+    }
+
+    sortedChildren.forEach(child => {
       const updatedChild = localEntries.find((e: MindMapEntry) => e.id === child.id);
       if(updatedChild) {
         rearrange(updatedChild);

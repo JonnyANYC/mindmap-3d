@@ -170,6 +170,83 @@ describe('Rearrangement Functions', () => {
       expect(newPositions.has('child2')).toBe(true)
     })
 
+    it('should prioritize children with more descendants', () => {
+      // Create a hierarchy where child1 has more descendants than child2
+      const entries = [
+        { ...createEntry('root', 0, 0, 0), isRoot: true },
+        createEntry('child1', 1, 0, 0),    // Will have 3 descendants
+        createEntry('child2', 0, 1, 0),    // Will have 1 descendant
+        createEntry('grandchild1-1', 2, 0, 0),
+        createEntry('grandchild1-2', 2, 1, 0),
+        createEntry('greatgrandchild1-1', 3, 0, 0),
+        createEntry('grandchild2-1', 0, 2, 0)
+      ]
+
+      const connections = [
+        createConnection('root', 'child1'),
+        createConnection('root', 'child2'),
+        createConnection('child1', 'grandchild1-1'),
+        createConnection('child1', 'grandchild1-2'),
+        createConnection('grandchild1-1', 'greatgrandchild1-1'),
+        createConnection('child2', 'grandchild2-1')
+      ]
+
+      const rootEntry = entries[0]
+      const { newPositions } = rearrangeMindMap(rootEntry, entries, connections)
+
+      // All descendants should be rearranged
+      expect(newPositions.has('child1')).toBe(true)
+      expect(newPositions.has('child2')).toBe(true)
+      expect(newPositions.has('grandchild1-1')).toBe(true)
+      expect(newPositions.has('grandchild1-2')).toBe(true)
+      expect(newPositions.has('greatgrandchild1-1')).toBe(true)
+      expect(newPositions.has('grandchild2-1')).toBe(true)
+    })
+
+    it('should handle complex hierarchies with proper descendant counting', () => {
+      // Create a more complex hierarchy
+      const entries = [
+        { ...createEntry('root', 0, 0, 0), isRoot: true },
+        createEntry('branch1', 1, 0, 0),    // 5 total descendants
+        createEntry('branch2', -1, 0, 0),   // 2 total descendants
+        createEntry('branch3', 0, 1, 0),    // 0 descendants
+        createEntry('b1-child1', 2, 0, 0),
+        createEntry('b1-child2', 2, 1, 0),
+        createEntry('b1-gc1', 3, 0, 0),
+        createEntry('b1-gc2', 3, 1, 0),
+        createEntry('b1-ggc1', 4, 0, 0),
+        createEntry('b2-child1', -2, 0, 0),
+        createEntry('b2-gc1', -3, 0, 0),
+      ]
+
+      const connections = [
+        createConnection('root', 'branch1'),
+        createConnection('root', 'branch2'),
+        createConnection('root', 'branch3'),
+        createConnection('branch1', 'b1-child1'),
+        createConnection('branch1', 'b1-child2'),
+        createConnection('b1-child1', 'b1-gc1'),
+        createConnection('b1-child1', 'b1-gc2'),
+        createConnection('b1-gc1', 'b1-ggc1'),
+        createConnection('branch2', 'b2-child1'),
+        createConnection('b2-child1', 'b2-gc1'),
+      ]
+
+      const rootEntry = entries[0]
+      const { newPositions, updatedEntries } = rearrangeMindMap(rootEntry, entries, connections)
+
+      // All connected entries should be rearranged
+      expect(newPositions.size).toBe(10) // All entries except root
+      expect(updatedEntries.length).toBe(entries.length)
+      
+      // Verify all branches and their descendants were processed
+      expect(newPositions.has('branch1')).toBe(true)
+      expect(newPositions.has('branch2')).toBe(true)
+      expect(newPositions.has('branch3')).toBe(true)
+      expect(newPositions.has('b1-ggc1')).toBe(true)
+      expect(newPositions.has('b2-gc1')).toBe(true)
+    })
+
     it('should not rearrange the same entry twice', () => {
       const entries = [
         { ...createEntry('root', 0, 0, 0), isRoot: true },
