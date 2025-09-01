@@ -28,6 +28,7 @@ import { HelpOverlay } from '@/components/HelpOverlay'
 import { PerformanceMonitor } from '@/components/PerformanceMonitor'
 import { DebugDisplay } from '@/components/DebugDisplay'
 import { RearrangementAnimator } from '@/components/RearrangementAnimator'
+import { getDisplayTitle } from '@/lib/utils/title'
 
 interface EntryProps {
   entry: EntryType
@@ -43,11 +44,12 @@ interface GhostEntryProps {
   position: Position3D
   opacity: number
   color: string
-  summary: string
+  title: string
   hideBackText?: boolean
 }
 
-function GhostEntry({ position, opacity, color, summary, isFacingCamera, hideBackText = false }: GhostEntryProps) {
+function GhostEntry({ position, opacity, color, title, isFacingCamera, hideBackText = false }: GhostEntryProps) {
+  const { displayTitle, fontSize } = getDisplayTitle(title || 'New Entry')
   
   return (
     <group position={position}>
@@ -58,7 +60,7 @@ function GhostEntry({ position, opacity, color, summary, isFacingCamera, hideBac
       <Text
         visible={!hideBackText || isFacingCamera}
         position={[0, 0, 0.026]}
-        fontSize={0.15}
+        fontSize={fontSize}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -66,12 +68,12 @@ function GhostEntry({ position, opacity, color, summary, isFacingCamera, hideBac
         material-opacity={opacity}
         material-transparent
       >
-        {summary}
+        {displayTitle}
       </Text>
       <Text
         visible={!hideBackText || !isFacingCamera}
         position={[0, 0, -0.026]}
-        fontSize={0.15}
+        fontSize={fontSize}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -80,7 +82,7 @@ function GhostEntry({ position, opacity, color, summary, isFacingCamera, hideBac
         material-opacity={opacity}
         material-transparent
       >
-        {summary}
+        {displayTitle}
       </Text>
     </group>
   )
@@ -97,6 +99,9 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef, isFacingCa
   const isHovered = useHoveredEntryId() === entry.id
   const rootEntryId = useMindMapStore((state) => state.rootEntryId)
   const isRoot = entry.id === rootEntryId
+  
+  // Get display title and font size
+  const { displayTitle, fontSize } = getDisplayTitle(entry.title || entry.summary || 'New Entry')
   
   const color = isRoot
     ? '#007bff' // Blue color for root entry
@@ -208,7 +213,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef, isFacingCa
       <Text
         visible={(!isDragging || isFacingCamera) && lodLevel === 'near'}
         position={[0, 0, 0.026]}
-        fontSize={0.15}
+        fontSize={fontSize}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -217,12 +222,12 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef, isFacingCa
         // @ts-expect-error - pointerEvents prop exists but not in types
         pointerEvents="none"
       >
-        {entry.summary}
+        {displayTitle}
       </Text>
       <Text
         visible={(!isDragging || !isFacingCamera) && lodLevel === 'near'}
         position={[0, 0, -0.026]}
-        fontSize={0.15}
+        fontSize={fontSize}
         color="white"
         anchorX="center"
         anchorY="middle"
@@ -232,7 +237,7 @@ function Entry({ entry, onDragStart, onDragEnd, isDragging, entryRef, isFacingCa
         // @ts-expect-error - pointerEvents prop exists but not in types
         pointerEvents="none"
       >
-        {entry.summary}
+        {displayTitle}
       </Text>
       {isSelected && !isDragging && lodLevel === 'near' && (
         <>
@@ -622,7 +627,11 @@ export default function Scene3D() {
   const handleAddEntry = useCallback(() => {
     if (!cameraRef.current) {
       // Fallback to random position if camera not ready
-      addEntry()
+      const newEntry = addEntry()
+      // Auto-open editor for new entry
+      if (newEntry) {
+        useMindMapStore.getState().openEditor(newEntry.id, true)
+      }
       return
     }
     
@@ -659,7 +668,11 @@ export default function Scene3D() {
       newPosition = [position.x, position.y, position.z]
     }
     
-    addEntry(newPosition)
+    const newEntry = addEntry(newPosition)
+    // Auto-open editor for new entry
+    if (newEntry) {
+      useMindMapStore.getState().openEditor(newEntry.id, true)
+    }
   }, [addEntry, entries, selectedEntryId])
 
   // Handle keyboard shortcuts for undo/redo, ESC cancellation, and Delete
@@ -697,16 +710,16 @@ export default function Scene3D() {
         e.preventDefault()
         const entryToDelete = entries.find(e => e.id === selectedEntryId)
         if (entryToDelete) {
-          // Store the ID and summary before deletion
+          // Store the ID and title before deletion
           const deletedId = entryToDelete.id
-          const deletedSummary = entryToDelete.summary
+          const deletedTitle = entryToDelete.title || entryToDelete.summary
           
           deleteEntry(selectedEntryId)
           
           // Show toast with undo option
           toast({
             title: "Entry deleted",
-            description: `"${deletedSummary}" has been deleted.`,
+            description: '"' + deletedTitle + '" has been deleted.',
             action: (
               <Button
                 variant="outline"
@@ -719,7 +732,7 @@ export default function Scene3D() {
                     useMindMapStore.getState().restoreDeletedEntry(deletedEntry)
                     toast({
                       title: "Entry restored",
-                      description: `"${deletedSummary}" has been restored.`,
+                      description: '"' + deletedSummary + '" has been restored.',
                     })
                   }
                 }}
@@ -776,14 +789,14 @@ export default function Scene3D() {
           ]
           const newEntry = addEntry(newPosition)
           useMindMapStore.getState().updateEntry(newEntry.id, {
-            summary: entryToDuplicate.summary,
+            title: entryToDuplicate.title || entryToDuplicate.summary,
             content: entryToDuplicate.content,
             color: entryToDuplicate.color
           })
           
           toast({
             title: "Entry duplicated",
-            description: `"${entryToDuplicate.summary}" has been duplicated.`,
+            description: '"' + (entryToDuplicate.title || entryToDuplicate.summary) + '" has been duplicated.',
           })
         }
       }
@@ -817,9 +830,11 @@ export default function Scene3D() {
           cameraRef.current?.position.copy(cameraPosition)
           cameraRef.current?.lookAt(targetPosition)
           
+          const entryTitle = ('title' in selectedEntry ? selectedEntry.title : null) || selectedEntry.summary
+          const description = 'Camera focused on "' + entryTitle + '".'
           toast({
             title: "Focused on entry",
-            description: `Camera focused on "${selectedEntry.summary}".`,
+            description: description,
             duration: 2000,
           })
         }
@@ -891,7 +906,7 @@ export default function Scene3D() {
           const duration = ((Date.now() - startTime) / 1000).toFixed(1)
           toast({
             title: "Rearrangement Complete",
-            description: `Completed in ${duration}s. Press Ctrl+Z to undo.`,
+            description: 'Completed in ' + duration + 's. Press Ctrl+Z to undo.',
             duration: 5000,
           })
         })
@@ -969,7 +984,7 @@ export default function Scene3D() {
                 position={dragState.originalPosition}
                 opacity={0.75}
                 color={SELECTED_ENTRY_COLOR}
-                summary={draggedEntry.summary}
+                title={draggedEntry.title || draggedEntry.summary}
                 isFacingCamera={renderInfo.isFacingCamera}
                 hideBackText={true}
               />
@@ -978,7 +993,7 @@ export default function Scene3D() {
                 position={dragState.previewPosition}
                 opacity={0.25}
                 color={SELECTED_ENTRY_COLOR}
-                summary={draggedEntry.summary}
+                title={draggedEntry.title || draggedEntry.summary}
                 isFacingCamera={renderInfo.isFacingCamera}
                 hideBackText={true}
               />

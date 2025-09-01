@@ -167,6 +167,7 @@ interface MindMapState {
   // Editor state
   isEditorOpen: boolean
   editingEntryId: string | null
+  isNewEntryBeingEdited: boolean  // Track if editing a newly created entry
   
   // Movement state
   movingEntryId: string | null
@@ -232,7 +233,7 @@ interface MindMapState {
   getMindMapData: () => MindMap
   
   // Editor actions
-  openEditor: (entryId: string) => void
+  openEditor: (entryId: string, isNewEntry?: boolean) => void
   closeEditor: () => void
   
   // Movement actions
@@ -286,6 +287,7 @@ export const useMindMapStore = create<MindMapState>()(
     deletedEntries: [],
     isEditorOpen: false,
     editingEntryId: null,
+    isNewEntryBeingEdited: false,
     movingEntryId: null,
     movementStartPosition: null,
     movementGhostPosition: null,
@@ -323,7 +325,8 @@ export const useMindMapStore = create<MindMapState>()(
         const newEntry: Entry = {
           id: uuidv4(),
           position: position || getRandomPosition(),
-          summary: 'New Entry',
+          title: 'New Entry',
+          summary: 'New Entry',  // Deprecated, kept for backward compatibility
           content: '',
           color: DEFAULT_ENTRY_COLOR,
           createdAt: new Date(),
@@ -349,6 +352,12 @@ export const useMindMapStore = create<MindMapState>()(
         const entry = state.entries.find(e => e.id === id)
         if (entry) {
           Object.assign(entry, updates)
+          // Sync title and summary for backward compatibility
+          if (updates.title !== undefined) {
+            entry.summary = updates.title
+          } else if (updates.summary !== undefined) {
+            entry.title = updates.summary
+          }
           entry.updatedAt = new Date()
           // Only clear undo state for position updates, not other property updates
           if (updates.position && !state.isRearrangementInProgress) {
@@ -770,10 +779,11 @@ export const useMindMapStore = create<MindMapState>()(
     },
     
     // Editor actions
-    openEditor: (entryId: string) => {
+    openEditor: (entryId: string, isNewEntry: boolean = false) => {
       set((state) => {
         state.isEditorOpen = true
         state.editingEntryId = entryId
+        state.isNewEntryBeingEdited = isNewEntry
       })
     },
     
@@ -781,6 +791,7 @@ export const useMindMapStore = create<MindMapState>()(
       set((state) => {
         state.isEditorOpen = false
         state.editingEntryId = null
+        state.isNewEntryBeingEdited = false
       })
     },
     
@@ -1049,13 +1060,13 @@ export const initializeWithSampleData = () => {
   
   // Create sample entries
   const entry1 = store.addEntry([-2, 0, 0])
-  store.updateEntry(entry1.id, { summary: 'Main Idea', content: 'This is the central concept of the mind map.' })
+  store.updateEntry(entry1.id, { title: 'Main Idea', content: 'This is the central concept of the mind map.' })
   
   const entry2 = store.addEntry([0.5, 1, 1])
-  store.updateEntry(entry2.id, { summary: 'Sub-topic 1', content: 'First major branch of the main idea.' })
+  store.updateEntry(entry2.id, { title: 'Sub-topic 1', content: 'First major branch of the main idea.' })
   
   const entry3 = store.addEntry([0.5, -1, -1])
-  store.updateEntry(entry3.id, { summary: 'Sub-topic 2', content: 'Second major branch of the main idea.' })
+  store.updateEntry(entry3.id, { title: 'Sub-topic 2', content: 'Second major branch of the main idea.' })
   
   // Create sample connections
   store.addConnection(entry1.id, entry2.id)

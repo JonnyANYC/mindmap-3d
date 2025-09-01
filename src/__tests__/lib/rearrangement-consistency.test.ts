@@ -37,10 +37,13 @@ function createConnection(sourceId: string, targetId: string): Connection {
 }
 
 // Load the shared core directly for testing the Web Worker logic
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadRearrangementCore(): any {
   // In a real test environment, we'd load the actual shared core
   // For now, we simulate it by creating the same structure as the Web Worker uses
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const path = require('path');
   
   try {
@@ -49,6 +52,7 @@ function loadRearrangementCore(): any {
     const coreCode = fs.readFileSync(corePath, 'utf8');
     
     // Create a minimal environment to evaluate the core
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sandbox: any = {
       performance: global.performance,
       Map: global.Map,
@@ -58,13 +62,14 @@ function loadRearrangementCore(): any {
     };
     
     // Execute the core code in the sandbox
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const vm = require('vm');
     const script = new vm.Script(coreCode);
     const context = vm.createContext(sandbox);
     script.runInContext(context);
     
     return sandbox.RearrangementCore;
-  } catch (error) {
+  } catch {
     console.warn('Could not load shared core for testing, using main thread implementation');
     return null;
   }

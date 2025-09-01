@@ -1,8 +1,9 @@
 export interface Entry {
   id: string
   position: [number, number, number]
-  summary: string
-  content: string
+  title: string
+  summary: string  // Deprecated - kept for backward compatibility, will be removed
+  content: string  // Now referred to as description in the UI
   color?: string
   createdAt: Date
   updatedAt: Date

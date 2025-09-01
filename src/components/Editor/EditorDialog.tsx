@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -10,23 +10,29 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { WYSIWYGEditorWithAutoSave } from './WYSIWYGEditorWithAutoSave'
+import { TitleField } from './TitleField'
 import { useMindMapStore } from '@/lib/store'
-
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react'
 
 export function EditorDialog() {
   const isEditorOpen = useMindMapStore((state) => state.isEditorOpen)
   const editingEntryId = useMindMapStore((state) => state.editingEntryId)
+  const isNewEntryBeingEdited = useMindMapStore((state) => state.isNewEntryBeingEdited)
   const closeEditor = useMindMapStore((state) => state.closeEditor)
   const getEntryById = useMindMapStore((state) => state.getEntryById)
   const setRootEntry = useMindMapStore((state) => state.setRootEntry)
   const rootEntryId = useMindMapStore((state) => state.rootEntryId)
+  const [hasTitleError, setHasTitleError] = useState(false)
   
   const entry = editingEntryId ? getEntryById(editingEntryId) : null
   
   const handleClose = useCallback(() => {
+    // Don't close if there's a title validation error
+    if (hasTitleError) {
+      return
+    }
     closeEditor()
-  }, [closeEditor])
+  }, [closeEditor, hasTitleError])
 
   const handleSetRoot = () => {
     if (editingEntryId) {
@@ -38,6 +44,12 @@ export function EditorDialog() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isEditorOpen) {
+        // Don't close if there's a title validation error
+        if (hasTitleError) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
         e.preventDefault()
         e.stopPropagation()
         handleClose()
@@ -48,7 +60,7 @@ export function EditorDialog() {
       document.addEventListener('keydown', handleKeyDown, true)
       return () => document.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [isEditorOpen, handleClose])
+  }, [isEditorOpen, handleClose, hasTitleError])
   
   if (!entry || !editingEntryId) {
     return null
@@ -62,15 +74,29 @@ export function EditorDialog() {
         <DialogHeader className="px-6 py-4 border-b">
           <DialogTitle>Edit Entry</DialogTitle>
           <DialogDescription>
-            Modify the content of your mind map entry here. Changes are saved automatically.
+            Modify the title and description of your mind map entry. Changes are saved automatically.
           </DialogDescription>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <WYSIWYGEditorWithAutoSave
-            entryId={editingEntryId}
-            initialContent={entry.content || ''}
-          />
+          <div className="space-y-6">
+            <TitleField
+              entryId={editingEntryId}
+              initialTitle={entry.title || entry.summary || 'New Entry'}
+              autoSelect={isNewEntryBeingEdited}
+              onValidationError={setHasTitleError}
+            />
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Description (optional)
+              </label>
+              <WYSIWYGEditorWithAutoSave
+                entryId={editingEntryId}
+                initialContent={entry.content || ''}
+              />
+            </div>
+          </div>
         </div>
         
         <div className="px-6 py-3 border-t bg-gray-50 flex justify-between items-center">
