@@ -116,7 +116,7 @@ export function TitleField({ entryId, initialTitle, autoSelect = false, onValida
     // For longer descriptions, use HuggingFace API
     setIsGenerating(true)
     try {
-      const response = await fetch('/api/huggingface', {
+      const response = await fetch('/api/summarizer', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

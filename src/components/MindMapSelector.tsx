@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useStorage } from '@/components/StorageProvider'
 import { storageService } from '@/lib/storage/storageService'
+import { DocumentGenerator } from '@/components/DocumentGenerator'
 import {
   Dialog,
   DialogContent,
@@ -281,6 +282,8 @@ export function MindMapSelector() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DocumentGenerator />
 
       {currentMindMapId && (
         <Button
