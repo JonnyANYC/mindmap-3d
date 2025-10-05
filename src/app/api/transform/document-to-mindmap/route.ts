@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 
-// TGI endpoint (HuggingFace Text Generation Inference running locally)
-const TGI_API_URL = 'http://172.17.0.1:8000/generate'
+// TGI configuration with environment variables and defaults
+const TGI_API_URL = process.env.DOCUMENT_TO_MINDMAP_TGI_URL || 'http://172.17.0.1:8080/generate'
+const TEMPERATURE = parseFloat(process.env.DOCUMENT_TO_MINDMAP_TEMPERATURE || '0.2')
+const TOP_P = parseFloat(process.env.DOCUMENT_TO_MINDMAP_TOP_P || '0.95')
 
 // JSON Graph Format types matching our mindmap structure
 interface JGFNode {
@@ -161,32 +163,42 @@ export async function POST(request: NextRequest) {
     // Prepare the prompt for the LLM
     const systemPrompt = `You are a mind map generator. Convert the provided document into a mind map structure using JSON Graph Format (JGF).
 
-Rules:
+CRITICAL RULES:
 1. Create nodes representing key concepts from the document
 2. Each node MUST have an id (string) and metadata with title (required) and optional description
-3. Exactly ONE node must have metadata.isRoot set to true - this should be the main topic
-4. Create edges to show relationships between concepts (edges are optional)
-5. Edges must connect different nodes (no self-loops)
-6. The graph must be undirected (directed: false)
+3. **IMPORTANT**: Exactly ONE node MUST have "isRoot": true in its metadata - this should be the main/central topic
+4. All other nodes MUST have "isRoot": false or omit the isRoot field
+5. The first node should typically be the root node representing the main concept
+6. Create edges to show relationships between concepts (edges are optional)
+7. Edges must connect different nodes (no self-loops)
+8. The graph must be undirected (directed: false)
 
-Generate a valid JGF structure with these exact fields:
+Generate a valid JGF structure. The FIRST node should be the root with "isRoot": true:
 {
   "graph": {
     "directed": false,
     "nodes": [
       {
-        "id": "unique-id",
+        "id": "main-topic-id",
         "metadata": {
-          "title": "Node Title",
+          "title": "Main Topic Title",
+          "description": "Description of the main topic",
+          "isRoot": true  // ONLY ONE NODE should have this set to true!
+        }
+      },
+      {
+        "id": "subtopic-1",
+        "metadata": {
+          "title": "Subtopic Title",
           "description": "Optional description",
-          "isRoot": true/false
+          "isRoot": false  // All other nodes must be false or omit this
         }
       }
     ],
     "edges": [
       {
-        "source": "node-id-1",
-        "target": "node-id-2"
+        "source": "main-topic-id",
+        "target": "subtopic-1"
       }
     ]
   }
@@ -204,8 +216,8 @@ Generate a valid JGF structure with these exact fields:
         inputs: `${systemPrompt}\n\n${userPrompt}`,
         parameters: {
           max_new_tokens: 2000,
-          temperature: 0.7,
-          top_p: 0.95,
+          temperature: TEMPERATURE,
+          top_p: TOP_P,
           return_full_text: false,
           grammar: {
             type: 'json',
@@ -294,8 +306,13 @@ Generate a valid JGF structure with these exact fields:
     // TGI returns the generated text in a specific format
     let generatedText = ''
     if (tgiResponse[0]?.generated_text) {
+      // Array format: [{ generated_text: "..." }]
       generatedText = tgiResponse[0].generated_text
+    } else if (tgiResponse.generated_text) {
+      // Object format: { generated_text: "..." }
+      generatedText = tgiResponse.generated_text
     } else if (typeof tgiResponse === 'string') {
+      // Direct string response
       generatedText = tgiResponse
     } else {
       console.error('Unexpected TGI response format:', tgiResponse)
@@ -317,10 +334,27 @@ Generate a valid JGF structure with these exact fields:
       )
     }
 
+    // Auto-fix: If no root node is specified, make the first node the root
+    if (jgfData.graph?.nodes && Array.isArray(jgfData.graph.nodes) && jgfData.graph.nodes.length > 0) {
+      const hasRoot = jgfData.graph.nodes.some(node => node.metadata?.isRoot === true)
+
+      if (!hasRoot) {
+        console.log('No root node found in response, setting first node as root')
+        // Set the first node as root
+        jgfData.graph.nodes[0].metadata.isRoot = true
+        // Ensure all other nodes are explicitly not root
+        for (let i = 1; i < jgfData.graph.nodes.length; i++) {
+          if (jgfData.graph.nodes[i].metadata) {
+            jgfData.graph.nodes[i].metadata.isRoot = false
+          }
+        }
+      }
+    }
+
     // Validate the generated mind map
     const validation = validateMindMap(jgfData)
     if (!validation.valid) {
-      console.error('Mind map validation failed:', validation.error)
+      console.error('Mind map validation failed:', validation.error, '\n', generatedText)
       return NextResponse.json(
         { error: validation.error },
         { status: 500 }
